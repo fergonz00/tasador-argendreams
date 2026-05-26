@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Tasador ArgenDreams</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --primary: #0F2940;          /* azul oscuro BYD-ish */
+  --primary-light: #1E4060;
+  --accent: #E63946;           /* rojo coral distintivo */
+  --accent-dark: #C12B36;
+  --white: #FFFFFF;
+  --grey-1: #F5F5F5;
+  --grey-2: #E5E5E5;
+  --grey-3: #999999;
+  --grey-4: #666666;
+  --black: #1A1A1A;
+  --green: #10B981;
+  --green-light: #D1FAE5;
+  --orange: #F59E0B;
+  --orange-light: #FEF3C7;
+  --red: #EF4444;
+  --red-light: #FEE2E2;
+  --radius: 12px;
+  --shadow: 0 2px 12px rgba(15,41,64,0.08);
+  --shadow-lg: 0 8px 32px rgba(15,41,64,0.15);
+  --font: 'DM Sans', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: var(--font); background: var(--grey-1); color: var(--black); min-height:100vh; -webkit-font-smoothing: antialiased; }
+button { font-family: var(--font); cursor: pointer; border: none; }
+input, select, textarea { font-family: var(--font); }
+
+/* ─── LOGIN ─── */
+.login-screen {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  padding: 20px;
+}
+.login-box {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 40px 32px;
+  width: 100%; max-width: 380px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.login-brand {
+  font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; margin-bottom: 4px;
+}
+.login-box h1 {
+  font-size: 24px; font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+.login-box .sub { font-size: 13px; color: var(--grey-3); margin-bottom: 28px; }
+.login-box input {
+  width: 100%; padding: 14px 16px;
+  border: 2px solid var(--grey-2);
+  border-radius: 8px; font-size: 15px;
+  margin-bottom: 14px; outline: none;
+  transition: border-color 0.2s;
+}
+.login-box input:focus { border-color: var(--primary); }
+.login-box button.primary {
+  width: 100%; padding: 14px;
+  background: var(--primary);
+  color: white; font-size: 15px; font-weight: 600;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+.login-box button.primary:hover { background: var(--primary-light); }
+.login-error { color: var(--red); font-size: 13px; margin-top: 12px; display:none; }
+
+/* ─── HEADER ─── */
+.app-header {
+  background: var(--primary);
+  color: white;
+  padding: 14px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: var(--shadow);
+}
+.app-header .brand {
+  display: flex; align-items: center; gap: 10px;
+}
+.app-header h1 { font-size: 17px; font-weight: 600; }
+.app-header .brand-tag {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  background: var(--accent); padding: 3px 7px; border-radius: 4px;
+}
+.app-header .user-info { font-size: 13px; opacity: 0.8; margin-right: 12px; }
+.app-header .header-actions { display: flex; align-items: center; gap: 8px; }
+.app-header button {
+  background: rgba(255,255,255,0.12);
+  color: white; padding: 8px 14px;
+  border-radius: 6px; font-size: 13px; font-weight: 500;
+  transition: background 0.2s;
+}
+.app-header button:hover { background: rgba(255,255,255,0.2); }
+
+/* ─── VIEWS ─── */
+.view { display: none; padding: 24px 16px; max-width: 800px; margin: 0 auto; }
+.view.active { display: block; }
+.view-placeholder {
+  background: white; border-radius: var(--radius);
+  padding: 48px 32px; text-align: center;
+  box-shadow: var(--shadow);
+}
+.view-placeholder .emoji { font-size: 48px; display: block; margin-bottom: 12px; }
+.view-placeholder h2 { font-size: 20px; color: var(--primary); margin-bottom: 8px; }
+.view-placeholder p { color: var(--grey-4); font-size: 14px; line-height: 1.6; max-width: 480px; margin: 0 auto; }
+.view-placeholder .badge {
+  display: inline-block; margin-top: 16px;
+  padding: 6px 14px; background: var(--orange-light); color: var(--orange);
+  font-size: 12px; font-weight: 600; border-radius: 20px;
+}
+
+/* ─── MODAL CAMBIO CLAVE ─── */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15,41,64,0.7);
+  display: none; align-items: center; justify-content: center;
+  z-index: 1000; padding: 20px;
+}
+.modal-backdrop.active { display: flex; }
+.modal {
+  background: white; border-radius: var(--radius);
+  padding: 32px 28px; max-width: 420px; width: 100%;
+  box-shadow: var(--shadow-lg);
+}
+.modal h2 { font-size: 19px; color: var(--primary); margin-bottom: 8px; }
+.modal .sub { font-size: 13px; color: var(--grey-4); margin-bottom: 20px; line-height: 1.5; }
+.modal input {
+  width: 100%; padding: 12px 14px;
+  border: 2px solid var(--grey-2);
+  border-radius: 8px; font-size: 14px;
+  margin-bottom: 12px; outline: none;
+}
+.modal input:focus { border-color: var(--primary); }
+.modal .modal-actions {
+  display: flex; gap: 10px; margin-top: 14px;
+}
+.modal button.primary {
+  flex: 1; padding: 12px;
+  background: var(--primary); color: white;
+  border-radius: 8px; font-size: 14px; font-weight: 600;
+}
+.modal button.secondary {
+  padding: 12px 18px;
+  background: var(--grey-2); color: var(--grey-4);
+  border-radius: 8px; font-size: 14px; font-weight: 500;
+}
+.modal-error { color: var(--red); font-size: 12px; margin-top: 4px; display:none; }
+
+/* ─── LOADING ─── */
+.loading {
+  position: fixed; inset: 0;
+  background: rgba(15,41,64,0.6);
+  display: none; align-items: center; justify-content: center;
+  z-index: 2000;
+}
+.loading.active { display: flex; }
+.spinner {
+  width: 40px; height: 40px;
+  border: 4px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ LOGIN ═══════════════════════ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <div class="login-brand">ArgenDreams</div>
+    <h1>Tasador BYD</h1>
+    <p class="sub">Iniciá sesión para empezar</p>
+    <input type="text" id="loginUser" placeholder="Usuario" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="Contraseña" autocomplete="current-password">
+    <button class="primary" onclick="doLogin()">Ingresar</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ APP ═══════════════════════ -->
+<div id="app" style="display:none;">
+
+  <header class="app-header">
+    <div class="brand">
+      <h1>Tasador</h1>
+      <span class="brand-tag">ArgenDreams</span>
+    </div>
+    <div class="header-actions">
+      <span class="user-info" id="headerUser"></span>
+      <button onclick="salir()">Salir</button>
+    </div>
+  </header>
+
+  <!-- VISTA VENDEDOR -->
+  <div class="view" id="vendedorView">
+    <div class="view-placeholder">
+      <span class="emoji">🚗</span>
+      <h2>Vista Vendedor</h2>
+      <p>Acá va el wizard de 12 pasos para cargar una tasación: datos del cliente, datos del usado, 0km equivalente, BYD que pretende el cliente, precio ofrecido, stock con entrega rápida y fotos.</p>
+      <span class="badge">FASE 1 — Próximamente</span>
+    </div>
+  </div>
+
+  <!-- VISTA ADMIN -->
+  <div class="view" id="adminView">
+    <div class="view-placeholder">
+      <span class="emoji">📊</span>
+      <h2>Vista Admin (Agustín)</h2>
+      <p>Tabs Pendientes / En reventa / Precios recibidos / Cerradas. Acciones: rebotar, enviar a reventas, ranking de precios con descuento configurable (7/9/12%), reenviar para mejorar, enviar precio final al vendedor. Comparación CCA + Fórmula FMG + IA de fotos.</p>
+      <span class="badge">FASE 2 — Próximamente</span>
+    </div>
+  </div>
+
+  <!-- VISTA REVENTA -->
+  <div class="view" id="reventaView">
+    <div class="view-placeholder">
+      <span class="emoji">💰</span>
+      <h2>Vista Reventa</h2>
+      <p>Lista simplificada de tasaciones a tasar. Cada una muestra: marca, modelo, año, km, versión, color, provincia y fotos. Comentarios del admin si los hay. Único input: tu precio de toma.</p>
+      <span class="badge">FASE 3 — Próximamente</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════ MODAL CAMBIO CLAVE ═══════════════════════ -->
+<div class="modal-backdrop" id="modalCambioClave">
+  <div class="modal">
+    <h2>🔒 Cambiar contraseña</h2>
+    <p class="sub">Es tu primer ingreso (o tu contraseña fue reseteada). Definí una contraseña nueva — mínimo 8 caracteres con letras y números.</p>
+    <input type="password" id="claveNueva1" placeholder="Contraseña nueva" autocomplete="new-password">
+    <input type="password" id="claveNueva2" placeholder="Repetir contraseña" autocomplete="new-password">
+    <div class="modal-error" id="claveError"></div>
+    <div class="modal-actions">
+      <button class="primary" onclick="confirmarCambioClave()">Confirmar</button>
+      <button class="secondary" onclick="salir()">Salir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ LOADING ═══════════════════════ -->
+<div class="loading" id="loadingOverlay">
+  <div class="spinner"></div>
+</div>
+
+
+<script>
+// ═════════════════════════════════════════════════════════════════
+// Tasador ArgenDreams — Fase 0 (login + skeleton de vistas)
+// Stack: HTML/CSS/JS vanilla + Supabase REST API
+// ═════════════════════════════════════════════════════════════════
+
+// ─── CONFIG ──────────────────────────────────────────────────────
+// MISMO PROYECTO SUPABASE QUE TGA (tablas con prefijo argendreams_)
+const SUPABASE_URL  = 'https://wjfglsafgaltusmbnccl.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqZmdsc2FmZ2FsdHVzbWJuY2NsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MzM2OTksImV4cCI6MjA4OTAwOTY5OX0.OOwgyKDNQsbBaGDaL0OhJfc8eOsCClvvAPW0VFBKrOA';
+// ⚠️ Esta anon key es la del proyecto Supabase de TGA. Se reutiliza porque
+// la Edge Function analyze-photos ya está deployada ahí. Las tablas nuevas
+// van con prefijo argendreams_* para no chocar con las de tga.
+
+const SUPERADMINS_USUARIOS = ['fngonzalez'];
+
+// ─── STATE ───────────────────────────────────────────────────────
+let currentUser = null;
+
+// ─── SUPABASE HELPERS ────────────────────────────────────────────
+async function sbGet(table, qs = '') {
+  const url = `${SUPABASE_URL}/rest/v1/${table}${qs}`;
+  const r = await fetch(url, {
+    headers: {
+      'apikey': SUPABASE_ANON,
+      'Authorization': `Bearer ${SUPABASE_ANON}`
+    }
+  });
+  if (!r.ok) throw new Error(`SB GET ${table}: ${r.status}`);
+  return r.json();
+}
+
+async function sbPost(table, body) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON,
+      'Authorization': `Bearer ${SUPABASE_ANON}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`SB POST ${table}: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+async function sbPatch(table, qs, body) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}${qs}`, {
+    method: 'PATCH',
+    headers: {
+      'apikey': SUPABASE_ANON,
+      'Authorization': `Bearer ${SUPABASE_ANON}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`SB PATCH ${table}: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+// ─── LOADING / UTILS ─────────────────────────────────────────────
+function showLoading() { document.getElementById('loadingOverlay').classList.add('active'); }
+function hideLoading() { document.getElementById('loadingOverlay').classList.remove('active'); }
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+function _esSuperadmin() {
+  return currentUser && SUPERADMINS_USUARIOS.includes(currentUser.usuario);
+}
+
+// ─── LOGIN ───────────────────────────────────────────────────────
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim().toLowerCase();
+  const p = document.getElementById('loginPass').value;
+  if (!u || !p) { showLoginError('Completá usuario y contraseña'); return; }
+
+  showLoading();
+  try {
+    const qs = `?usuario=eq.${encodeURIComponent(u)}&clave=eq.${encodeURIComponent(p)}&activo=eq.true&select=*`;
+    const rows = await sbGet('argendreams_usuarios', qs);
+
+    if (rows.length === 0) {
+      showLoginError('Usuario o contraseña incorrectos (o usuario inactivo)');
+      return;
+    }
+
+    currentUser = rows[0];
+
+    if (currentUser.debe_cambiar_clave) {
+      mostrarModalCambioClave();
+      return;
+    }
+
+    continuarLogin();
+  } catch (e) {
+    console.error(e);
+    showLoginError('Error de conexión. Probá de nuevo.');
+  } finally {
+    hideLoading();
+  }
+}
+
+function continuarLogin() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('headerUser').textContent = `${currentUser.nombre} · ${currentUser.rol}`;
+
+  // Despachar a la vista según el rol
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+
+  if (currentUser.rol === 'admin') {
+    document.getElementById('adminView').classList.add('active');
+  } else if (currentUser.rol === 'reventa') {
+    document.getElementById('reventaView').classList.add('active');
+  } else {
+    document.getElementById('vendedorView').classList.add('active');
+  }
+}
+
+function salir() {
+  currentUser = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('modalCambioClave').classList.remove('active');
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+// ─── MODAL CAMBIO CLAVE ──────────────────────────────────────────
+function mostrarModalCambioClave() {
+  document.getElementById('claveNueva1').value = '';
+  document.getElementById('claveNueva2').value = '';
+  document.getElementById('claveError').style.display = 'none';
+  document.getElementById('modalCambioClave').classList.add('active');
+}
+
+function validarClaveUsuario(c) {
+  if (!c || c.length < 8) return { ok: false, msg: 'Mínimo 8 caracteres' };
+  if (!/[a-zA-Z]/.test(c)) return { ok: false, msg: 'Tiene que tener al menos una letra' };
+  if (!/[0-9]/.test(c)) return { ok: false, msg: 'Tiene que tener al menos un número' };
+  return { ok: true };
+}
+
+async function confirmarCambioClave() {
+  const c1 = document.getElementById('claveNueva1').value;
+  const c2 = document.getElementById('claveNueva2').value;
+  const errEl = document.getElementById('claveError');
+
+  if (c1 !== c2) {
+    errEl.textContent = 'Las contraseñas no coinciden';
+    errEl.style.display = 'block';
+    return;
+  }
+  const v = validarClaveUsuario(c1);
+  if (!v.ok) {
+    errEl.textContent = v.msg;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  showLoading();
+  try {
+    await sbPatch('argendreams_usuarios', `?id=eq.${currentUser.id}`, {
+      clave: c1,
+      debe_cambiar_clave: false
+    });
+    currentUser.clave = c1;
+    currentUser.debe_cambiar_clave = false;
+    document.getElementById('modalCambioClave').classList.remove('active');
+    continuarLogin();
+  } catch (e) {
+    console.error(e);
+    errEl.textContent = 'Error guardando la contraseña. Probá de nuevo.';
+    errEl.style.display = 'block';
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── INIT ────────────────────────────────────────────────────────
+// Enter en login dispara doLogin
+document.getElementById('loginPass').addEventListener('keypress', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('loginUser').addEventListener('keypress', e => {
+  if (e.key === 'Enter') document.getElementById('loginPass').focus();
+});
+
+</script>
+</body>
+</html>

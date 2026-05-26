@@ -1,0 +1,14 @@
+.DS_Store
+.vscode/
+.idea/
+*.log
+node_modules/
+
+# Secretos / config local
+.env
+.env.local
+
+# Build / temp
+dist/
+build/
+*.tmp
