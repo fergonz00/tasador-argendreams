@@ -23,9 +23,11 @@ App web de tasación de autos usados para **ArgenDreams**, concesionaria nueva q
 | Rol | Quién | Qué puede hacer |
 |---|---|---|
 | `vendedor` | Cada vendedor de ArgenDreams (con usuario propio) | Crear tasaciones · ver "Mis tasaciones" · corregir las que rebota el admin · marcar TOMADO/NO TOMADO al final |
-| `admin` | Agustín (jefe de ventas) | Todo lo del vendedor + moderar tasaciones (rebotar o enviar a reventas) + ver precios de reventas en ranking + cerrar precio final · Único que ve CCA / Fórmula FMG / IA / diferencia $/% interna |
+| `admin` | Agustín (jefe de ventas) | Todo lo del vendedor + moderar tasaciones (rebotar o enviar a reventas) + ver precios de reventas en ranking + cerrar precio final · Único que ve CCA / Fórmula FMG / IA / diferencia $/% interna. **NO puede gestionar usuarios ni entrar como otros usuarios** |
 | `reventa` | 7-8 reventas externos (con usuario propio) | Ver lista de tasaciones a tasar · cargar precio de toma para cada una · NO ve CCA, FMG, IA ni datos internos |
-| `superadmin` | `fngonzalez` (Fer) hardcoded | Igual que admin + gestión de usuarios |
+| `superadmin` (modo god) | **`fngonzalez` (Fer) hardcoded — único** | Todo lo del admin + alta/baja/edición de usuarios + reset de claves + **impersonation: entrar como cualquier otro usuario para ver lo que ve cada uno** |
+
+**Importante:** la lista `SUPERADMINS_USUARIOS` en `index.html` debe contener SOLO `fngonzalez`. Agustín NO es superadmin — es admin "normal". Esto se controla con el helper `_esSuperadmin()` antes de mostrar el botón 👥 Usuarios y el botón "Entrar como otro usuario".
 
 ## Flujo de una tasación (estados)
 

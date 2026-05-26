@@ -1084,14 +1084,26 @@ function validarStep(step) {
       if (!wizardData.usado_version) return { ok: false, msg: 'Elegí una versión' };
       return { ok: true };
     case 5:
-      // 0km equivalente: ahora es automático.
-      // - Si hay match en el scraping y hay 2+ versiones, exigimos elegir versión
-      // - Si hay 1 versión, ya quedó seteada
-      // - Si no hay match, dejamos pasar
-      if (wizardData.equiv_0km_existe === 'si' && wizardData.equiv_0km_marca && wizardData.equiv_0km_modelo) {
-        const versiones = getEquiv0kmVersiones(wizardData.equiv_0km_marca, wizardData.equiv_0km_modelo);
-        if (versiones.length > 1 && !wizardData.equiv_0km_version) {
-          return { ok: false, msg: 'Elegí la versión del 0km equivalente' };
+      // 0km equivalente:
+      // - Si NO hay match → ya está, pasa
+      // - Si hay match → tiene que confirmar (Es correcto / No coincide)
+      // - Si confirmó "Es correcto" y hay 2+ versiones → tiene que elegir
+      // - Si confirmó "No coincide" → tiene que elegir marca + modelo manual + comentario
+      const matchAuto = detectarEquivVigente(wizardData.usado_marca, wizardData.usado_modelo);
+      if (matchAuto) {
+        if (!wizardData.equiv_0km_confirmado) {
+          return { ok: false, msg: 'Confirmá si la sugerencia es correcta o no' };
+        }
+        if (wizardData.equiv_0km_confirmado === 'si') {
+          const versiones = getEquiv0kmVersiones(wizardData.equiv_0km_marca, wizardData.equiv_0km_modelo);
+          if (versiones.length > 1 && !wizardData.equiv_0km_version) {
+            return { ok: false, msg: 'Elegí la versión del 0km equivalente' };
+          }
+        } else {
+          // No coincide → elegir manual + comentario
+          if (!wizardData.equiv_0km_marca) return { ok: false, msg: 'Elegí la marca correcta' };
+          if (!wizardData.equiv_0km_modelo) return { ok: false, msg: 'Elegí el modelo correcto' };
+          if (!(wizardData.equiv_0km_comentario || '').trim()) return { ok: false, msg: 'Contanos qué no coincidía' };
         }
       }
       return { ok: true };
@@ -1257,12 +1269,13 @@ function renderStep6_Equiv0km() {
     wizardData.equiv_0km_marca = null;
     wizardData.equiv_0km_modelo = null;
     wizardData.equiv_0km_version = null;
+    wizardData.equiv_0km_comentario = null;
     return `
       <div class="wizard-step">
         ${_stepHeader(6, '🆕 0km equivalente vigente')}
         <div style="background:var(--grey-1); padding:18px; border-radius:10px; text-align:center; margin-bottom:8px;">
           <p style="font-size:14px; color:var(--grey-4); line-height:1.5;">
-            <strong>${wizardData.usado_marca} ${wizardData.usado_modelo}</strong> no figura en el listado de 0km vigentes de elcerokm.
+            <strong>${wizardData.usado_marca} ${wizardData.usado_modelo}</strong> no figura en el listado de 0km vigentes.
           </p>
           <p style="font-size:13px; color:var(--grey-3); margin-top:8px;">Saltamos este paso. Tocá <strong>Siguiente</strong>.</p>
         </div>
@@ -1270,35 +1283,124 @@ function renderStep6_Equiv0km() {
     `;
   }
 
-  // CASO 2: HAY match → auto-seteo marca + modelo, solo pido versión
-  wizardData.equiv_0km_existe = 'si';
-  wizardData.equiv_0km_marca = match.marca;
-  wizardData.equiv_0km_modelo = match.modelo;
-
-  const versiones = getEquiv0kmVersiones(match.marca, match.modelo);
+  // CASO 2: HAY match → mostrar sugerencia con confirmar / no coincide
+  const confirmado = wizardData.equiv_0km_confirmado;  // 'si' | 'no' | undefined
 
   return `
     <div class="wizard-step">
       ${_stepHeader(6, '🆕 0km equivalente vigente')}
-      <div style="background:#f0fdf4; padding:14px 18px; border-radius:10px; margin-bottom:14px; border-left:4px solid var(--green);">
-        <p style="font-size:13px; color:var(--grey-4); margin-bottom:4px;">Encontrado en elcerokm:</p>
-        <p style="font-size:16px; font-weight:600; color:var(--primary);">${match.marca} ${match.modelo}</p>
+
+      <div style="background:#f0fdf4; padding:16px 18px; border-radius:10px; margin-bottom:14px; border-left:4px solid var(--green);">
+        <p style="font-size:13px; color:var(--grey-4); margin-bottom:6px;">Sugerencia:</p>
+        <p style="font-size:18px; font-weight:700; color:var(--primary);">${match.marca} ${match.modelo}</p>
       </div>
 
-      ${versiones.length === 0 ? `
-        <p class="step-help">No hay sub-versiones específicas. Seguí adelante.</p>
-      ` : versiones.length === 1 ? (() => {
-          wizardData.equiv_0km_version = versiones[0];
-          return `<p class="step-help">Única versión vigente: <strong>${versiones[0]}</strong></p>`;
-        })() : `
-        <label class="step-label">¿Qué versión 0km?</label>
+      <div class="option-pills">
+        <button class="option-pill ${confirmado === 'si' ? 'active' : ''}"
+          onclick="confirmarEquiv('si')">✅ Es correcto</button>
+        <button class="option-pill ${confirmado === 'no' ? 'active' : ''}"
+          onclick="confirmarEquiv('no')">❌ No coincide</button>
+      </div>
+
+      ${confirmado === 'si' ? renderEquivVersionPicker(match) : ''}
+      ${confirmado === 'no' ? renderEquivManualPicker() : ''}
+    </div>
+  `;
+}
+
+function renderEquivVersionPicker(match) {
+  const versiones = getEquiv0kmVersiones(match.marca, match.modelo);
+  if (versiones.length === 0) {
+    return `<p class="step-help" style="margin-top:14px;">No hay sub-versiones específicas. Seguí adelante.</p>`;
+  }
+  if (versiones.length === 1) {
+    wizardData.equiv_0km_version = versiones[0];
+    return `<p class="step-help" style="margin-top:14px;">Única versión vigente: <strong>${versiones[0]}</strong></p>`;
+  }
+  return `
+    <label class="step-label" style="margin-top:14px;">¿Qué versión 0km?</label>
+    <select class="step-select" onchange="seleccionarEquivVersion(this.value)">
+      <option value="">— Elegí una versión —</option>
+      ${versiones.map(v => `<option value="${v}" ${wizardData.equiv_0km_version === v ? 'selected' : ''}>${v}</option>`).join('')}
+    </select>
+  `;
+}
+
+function renderEquivManualPicker() {
+  const marcas = getEquiv0kmMarcas();
+  const modelos = wizardData.equiv_0km_marca ? getEquiv0kmModelos(wizardData.equiv_0km_marca) : [];
+  const versiones = (wizardData.equiv_0km_marca && wizardData.equiv_0km_modelo)
+    ? getEquiv0kmVersiones(wizardData.equiv_0km_marca, wizardData.equiv_0km_modelo) : [];
+
+  return `
+    <div style="margin-top:14px; padding:14px; background:var(--grey-1); border-radius:10px;">
+      <label class="step-label">Marca correcta</label>
+      <select class="step-select" onchange="seleccionarEquivMarca(this.value)">
+        <option value="">— Elegí una marca —</option>
+        ${marcas.map(m => `<option value="${m}" ${wizardData.equiv_0km_marca === m ? 'selected' : ''}>${m}</option>`).join('')}
+      </select>
+
+      ${wizardData.equiv_0km_marca ? `
+        <label class="step-label" style="margin-top:14px;">Modelo correcto</label>
+        ${modelos.length === 0
+          ? `<p class="step-help" style="color:var(--red)">Sin modelos cargados para ${wizardData.equiv_0km_marca}.</p>`
+          : `<select class="step-select" onchange="seleccionarEquivModelo(this.value)">
+              <option value="">— Elegí un modelo —</option>
+              ${modelos.map(m => `<option value="${m}" ${wizardData.equiv_0km_modelo === m ? 'selected' : ''}>${m}</option>`).join('')}
+            </select>`}
+      ` : ''}
+
+      ${wizardData.equiv_0km_modelo && versiones.length > 0 ? `
+        <label class="step-label" style="margin-top:14px;">Versión</label>
         <select class="step-select" onchange="seleccionarEquivVersion(this.value)">
           <option value="">— Elegí una versión —</option>
           ${versiones.map(v => `<option value="${v}" ${wizardData.equiv_0km_version === v ? 'selected' : ''}>${v}</option>`).join('')}
         </select>
-      `}
+      ` : ''}
+
+      <label class="step-label" style="margin-top:14px;">¿Qué no coincidía? (para que Agustín lo revise)</label>
+      <textarea class="step-textarea"
+        oninput="wizardData.equiv_0km_comentario = this.value"
+        placeholder="Ej. La sugerencia es Polo pero el cliente quiere el Virtus, son distintos."
+      >${wizardData.equiv_0km_comentario || ''}</textarea>
     </div>
   `;
+}
+
+function confirmarEquiv(v) {
+  wizardData.equiv_0km_confirmado = v;
+  wizardData.equiv_0km_existe = 'si';
+  if (v === 'si') {
+    // Restaura marca/modelo del match auto-detectado
+    const match = detectarEquivVigente(wizardData.usado_marca, wizardData.usado_modelo);
+    if (match) {
+      wizardData.equiv_0km_marca = match.marca;
+      wizardData.equiv_0km_modelo = match.modelo;
+      // Si solo hay 1 versión, la seteo. Si hay varias, reset para que elija
+      const versiones = getEquiv0kmVersiones(match.marca, match.modelo);
+      if (versiones.length === 1) wizardData.equiv_0km_version = versiones[0];
+      else wizardData.equiv_0km_version = null;
+    }
+    wizardData.equiv_0km_comentario = null;
+  } else {
+    // Reset para que elija manual
+    wizardData.equiv_0km_marca = null;
+    wizardData.equiv_0km_modelo = null;
+    wizardData.equiv_0km_version = null;
+  }
+  renderWizard();
+}
+
+function seleccionarEquivMarca(m) {
+  wizardData.equiv_0km_marca = m || null;
+  wizardData.equiv_0km_modelo = null;
+  wizardData.equiv_0km_version = null;
+  renderWizard();
+}
+function seleccionarEquivModelo(m) {
+  wizardData.equiv_0km_modelo = m || null;
+  wizardData.equiv_0km_version = null;
+  renderWizard();
 }
 function seleccionarEquivVersion(v) {
   wizardData.equiv_0km_version = v || null;
@@ -1467,6 +1569,7 @@ async function submitTasacion() {
       equiv_0km_version: wizardData.equiv_0km_existe === 'si' ? wizardData.equiv_0km_version : null,
       equiv_0km_precio: null,   // se setea abajo si encontramos el row
       equiv_0km_moneda: null,
+      equiv_0km_comentario: wizardData.equiv_0km_comentario || null,
       byd_modelo: wizardData.byd_modelo,
       byd_version: wizardData.byd_version,
       precio_ofrecido_cliente: wizardData.precio_ofrecido_cliente,

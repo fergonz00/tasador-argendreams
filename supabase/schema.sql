@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS tasaciones (
   equiv_0km_version       TEXT,
   equiv_0km_precio        NUMERIC,
   equiv_0km_moneda        TEXT CHECK (equiv_0km_moneda IN ('ARS', 'USD')),
+  equiv_0km_comentario    TEXT,                -- si el vendedor corrigió la sugerencia, qué no coincidía
 
   -- 0km BYD que pretende comprar el cliente
   byd_modelo              TEXT,
