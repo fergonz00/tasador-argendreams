@@ -985,13 +985,16 @@ function validarStep(step) {
       if (!wizardData.usado_modelo) return { ok: false, msg: 'Elegí un modelo' };
       return { ok: true };
     case 4:
-      // versión es opcional para algunas marcas. La dejamos opcional.
+      if (!wizardData.usado_version) return { ok: false, msg: 'Elegí una versión' };
       return { ok: true };
     case 5:
-      // 0km equivalente: todo opcional (puede no aplicar)
+      // 0km equivalente: hay que elegir Sí o No (no dejamos pasar sin elegir)
+      if (!wizardData.equiv_0km_existe) return { ok: false, msg: 'Indicá si hay un 0km equivalente' };
+      if (wizardData.equiv_0km_existe === 'si' && !(wizardData.equiv_0km_modelo || '').trim())
+        return { ok: false, msg: 'Ingresá el modelo 0km equivalente' };
       return { ok: true };
     case 6:
-      if (!wizardData.usado_km || wizardData.usado_km < 0) return { ok: false, msg: 'Ingresá los kilómetros' };
+      if (!wizardData.usado_km || wizardData.usado_km <= 0) return { ok: false, msg: 'Ingresá los kilómetros' };
       return { ok: true };
     case 7:
       if (!(wizardData.usado_color || '').trim()) return { ok: false, msg: 'Ingresá el color' };
@@ -999,6 +1002,7 @@ function validarStep(step) {
       return { ok: true };
     case 8:
       if (!wizardData.byd_modelo) return { ok: false, msg: 'Elegí el modelo BYD que pretende el cliente' };
+      if (!wizardData.byd_version) return { ok: false, msg: 'Elegí la versión del BYD' };
       return { ok: true };
     case 9:
       if (!wizardData.precio_ofrecido_cliente || wizardData.precio_ofrecido_cliente <= 0)
@@ -1009,7 +1013,7 @@ function validarStep(step) {
         return { ok: false, msg: 'Indicá si ofreciste stock con entrega rápida' };
       return { ok: true };
     case 11:
-      // Fotos opcionales pero recomendadas (warning, no bloquea)
+      if (fotos.length === 0 && (!editingTasacionId)) return { ok: false, msg: 'Subí al menos 1 foto del usado' };
       return { ok: true };
   }
   return { ok: true };
@@ -1122,9 +1126,8 @@ function renderStep5_Version() {
     return `
       <div class="wizard-step">
         ${_stepHeader(5, '⚙️ Versión')}
-        <p class="step-help">No tenemos versiones cargadas. Escribila manualmente (opcional):</p>
-        <input type="text" class="step-input" value="${wizardData.usado_version || ''}"
-          oninput="wizardData.usado_version = this.value" placeholder="Versión (opcional)">
+        <p class="step-help" style="color:var(--red)"><strong>No tenemos versiones cargadas en CCA para ${wizardData.usado_marca} ${wizardData.usado_modelo} ${wizardData.usado_anio}.</strong></p>
+        <p class="step-help">Volvé atrás y verificá la marca/modelo/año, o consultá con Agustín.</p>
       </div>
     `;
   }
@@ -1135,22 +1138,12 @@ function renderStep5_Version() {
       <select class="step-select" onchange="seleccionarVersion(this.value)">
         <option value="">— Elegí una versión —</option>
         ${versiones.map(v => `<option value="${v}" ${wizardData.usado_version === v ? 'selected' : ''}>${v}</option>`).join('')}
-        <option value="__OTRA__" ${wizardData.usado_version === '__OTRA__' ? 'selected' : ''}>— Otra / no sé —</option>
       </select>
-      ${wizardData.usado_version === '__OTRA__' ? `
-        <label class="step-label" style="margin-top:14px">Escribila</label>
-        <input type="text" class="step-input"
-          oninput="wizardData.usado_version_custom = this.value"
-          value="${wizardData.usado_version_custom || ''}"
-          placeholder="Versión">
-      ` : ''}
     </div>
   `;
 }
 function seleccionarVersion(v) {
   wizardData.usado_version = v || null;
-  // si elige "Otra" re-renderizo para mostrar el input. Si no, no re-renderizo (evita el reset del foco)
-  if (v === '__OTRA__') renderWizard();
 }
 
 function renderStep6_Equiv0km() {
@@ -1344,7 +1337,7 @@ async function submitTasacion() {
       cliente_nombre: (wizardData.cliente_nombre || '').trim(),
       usado_marca: wizardData.usado_marca,
       usado_modelo: wizardData.usado_modelo,
-      usado_version: wizardData.usado_version === '__OTRA__' ? (wizardData.usado_version_custom || null) : wizardData.usado_version,
+      usado_version: wizardData.usado_version,
       usado_anio: wizardData.usado_anio,
       usado_km: wizardData.usado_km,
       usado_color: wizardData.usado_color,
