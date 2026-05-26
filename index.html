@@ -658,7 +658,7 @@ async function continuarLogin() {
     // Los admins eligen entre Modo Admin o Modo Vendedor
     document.getElementById('modoSelectorView').classList.add('active');
     // Pre-cargo CCA en background por si elige vendedor (no bloquea la elección)
-    Promise.all([loadCCA(), loadPrecios0km()]).catch(e => console.error('Data load fail:', e));
+    Promise.all([loadCCA(), loadPrecios0km().then(() => loadVW0km())]).catch(e => console.error('Data load fail:', e));
   } else if (currentUser.rol === 'reventa') {
     document.getElementById('reventaView').classList.add('active');
   } else {
@@ -666,7 +666,9 @@ async function continuarLogin() {
     document.getElementById('vendedorView').classList.add('active');
     showLoading('Cargando datos...');
     try {
-      await Promise.all([loadCCA(), loadPrecios0km()]);
+      await loadCCA();
+      await loadPrecios0km();
+      await loadVW0km();
     } catch (e) {
       console.error('Data load fail:', e);
       showToast('No se pudieron cargar todos los datos de referencia', 'error');
@@ -772,9 +774,13 @@ async function confirmarCambioClave() {
 // Reusamos la sheet CCA de TGA (mismas marcas/modelos de usados)
 const CCA_CSV_URL = 'https://docs.google.com/spreadsheets/d/1MJWeHCTbxdqBJwifzgNbHssLLsxAwaSkb66Zc9yv3ko/gviz/tq?tqx=out:csv&gid=904791552';
 
-// Sheet de 0km (scraping de elcerokm, alimenta TGA) — 8 marcas + BYD en USD.
+// Sheet de 0km (scraping de elcerokm, alimenta TGA) — 7 marcas SIN VW.
 // Columnas: Marca, Modelo, Versión, Precio, Moneda (ARS|USD), Actualizado
 const PRECIOS_0KM_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH_9OtgijB7xV7qZEHoogNXq8TE5gLxz4RNb2DvxbbQ1o2A_Be2my532IJF0nxpJCUkghJrEa3TeDw/pub?gid=647749443&single=true&output=csv';
+
+// Hoja VW de TGA (la que TGA usa para sus precios de venta) — solo VW.
+// Columnas: Modelo, Oferta con FyF, ... (sin granularidad de versión)
+const VW_CSV_URL = 'https://docs.google.com/spreadsheets/d/1MJWeHCTbxdqBJwifzgNbHssLLsxAwaSkb66Zc9yv3ko/gviz/tq?tqx=out:csv&gid=1899724741';
 
 // TODO: reemplazar por sheet propia cuando Fer la cree
 //       (ver supabase/sheet-byd-template.md)
@@ -836,6 +842,34 @@ async function loadCCA() {
   const text = await res.text();
   ccaData = parseCSV(text);
   console.log('CCA cargado:', ccaData.length, 'registros');
+}
+
+async function loadVW0km() {
+  // Carga la hoja VW de TGA y la SUMA a precios0kmData con marca='VOLKSWAGEN'
+  try {
+    const res = await fetch(VW_CSV_URL);
+    if (!res.ok) throw new Error('VW HTTP ' + res.status);
+    const text = await res.text();
+    const rows = parseCSV(text);
+    let added = 0;
+    rows.forEach(r => {
+      const modelo = (r['Modelo'] || r['modelo'] || '').trim();
+      if (!modelo) return;
+      const precioRaw = (r['Oferta con FyF'] || r['oferta vigente con fyf'] || '').toString();
+      const precio = parseFloat(precioRaw.replace(/[\$,]/g, '').replace(/\./g, '')) || 0;
+      precios0kmData.push({
+        marca: 'VOLKSWAGEN',
+        modelo: modelo,
+        version: '',         // la hoja VW no tiene granularidad de versión
+        precio: precio,
+        moneda: 'ARS'
+      });
+      added++;
+    });
+    console.log('VW 0km cargados:', added, 'modelos');
+  } catch (e) {
+    console.warn('No se pudo cargar VW 0km:', e);
+  }
 }
 
 async function loadPrecios0km() {
