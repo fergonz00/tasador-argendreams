@@ -1018,30 +1018,22 @@ function renderStep2_Marca() {
   return `
     <div class="wizard-step">
       ${_stepHeader(2, '🚗 Marca del usado')}
-      <label class="step-label">Buscá la marca</label>
-      <input type="text" class="step-input" id="filtroMarca"
-        oninput="filtrarMarcas(this.value)" placeholder="Escribí para filtrar...">
-      <div class="option-pills" id="pillsMarca">
-        ${marcas.map(m => `<button class="option-pill ${wizardData.usado_marca === m ? 'active' : ''}"
-          onclick="seleccionarMarca('${m.replace(/'/g, "\\'")}')">${m}</button>`).join('')}
-      </div>
+      <label class="step-label">Elegí la marca</label>
+      <select class="step-select" onchange="seleccionarMarca(this.value)">
+        <option value="">— Elegí una marca —</option>
+        ${marcas.map(m => `<option value="${m}" ${wizardData.usado_marca === m ? 'selected' : ''}>${m}</option>`).join('')}
+      </select>
+      <div class="step-help" style="margin-top:8px">Tip: tocá el desplegable y empezá a escribir el nombre para encontrarla más rápido.</div>
     </div>
   `;
 }
 
-function filtrarMarcas(q) {
-  const qn = (q || '').toLowerCase().trim();
-  document.querySelectorAll('#pillsMarca .option-pill').forEach(b => {
-    b.style.display = b.textContent.toLowerCase().includes(qn) ? '' : 'none';
-  });
-}
-
 function seleccionarMarca(m) {
+  if (!m) { wizardData.usado_marca = null; return; }
   wizardData.usado_marca = m;
   // reset campos dependientes
   wizardData.usado_modelo = null;
   wizardData.usado_version = null;
-  renderWizard();
 }
 
 function renderStep3_Anio() {
@@ -1075,25 +1067,18 @@ function renderStep4_Modelo() {
   return `
     <div class="wizard-step">
       ${_stepHeader(4, '🏷️ Modelo de ' + wizardData.usado_marca)}
-      <input type="text" class="step-input" id="filtroModelo"
-        oninput="filtrarModelos(this.value)" placeholder="Escribí para filtrar...">
-      <div class="option-pills" id="pillsModelo">
-        ${modelos.map(m => `<button class="option-pill ${wizardData.usado_modelo === m ? 'active' : ''}"
-          onclick="seleccionarModelo('${m.replace(/'/g, "\\'")}')">${m}</button>`).join('')}
-      </div>
+      <label class="step-label">Elegí el modelo</label>
+      <select class="step-select" onchange="seleccionarModelo(this.value)">
+        <option value="">— Elegí un modelo —</option>
+        ${modelos.map(m => `<option value="${m}" ${wizardData.usado_modelo === m ? 'selected' : ''}>${m}</option>`).join('')}
+      </select>
     </div>
   `;
 }
-function filtrarModelos(q) {
-  const qn = (q || '').toLowerCase().trim();
-  document.querySelectorAll('#pillsModelo .option-pill').forEach(b => {
-    b.style.display = b.textContent.toLowerCase().includes(qn) ? '' : 'none';
-  });
-}
 function seleccionarModelo(m) {
+  if (!m) { wizardData.usado_modelo = null; return; }
   wizardData.usado_modelo = m;
   wizardData.usado_version = null;
-  renderWizard();
 }
 
 function renderStep5_Version() {
@@ -1114,14 +1099,14 @@ function renderStep5_Version() {
   return `
     <div class="wizard-step">
       ${_stepHeader(5, '⚙️ Versión de ' + wizardData.usado_modelo)}
-      <div class="option-pills">
-        ${versiones.map(v => `<button class="option-pill ${wizardData.usado_version === v ? 'active' : ''}"
-          onclick="wizardData.usado_version = '${v.replace(/'/g, "\\'")}'; renderWizard();">${v}</button>`).join('')}
-        <button class="option-pill ${wizardData.usado_version === '__OTRA__' ? 'active' : ''}"
-          onclick="wizardData.usado_version = '__OTRA__'; renderWizard();">Otra / no sé</button>
-      </div>
+      <label class="step-label">Elegí la versión</label>
+      <select class="step-select" onchange="seleccionarVersion(this.value)">
+        <option value="">— Elegí una versión —</option>
+        ${versiones.map(v => `<option value="${v}" ${wizardData.usado_version === v ? 'selected' : ''}>${v}</option>`).join('')}
+        <option value="__OTRA__" ${wizardData.usado_version === '__OTRA__' ? 'selected' : ''}>— Otra / no sé —</option>
+      </select>
       ${wizardData.usado_version === '__OTRA__' ? `
-        <label class="step-label">Escribila</label>
+        <label class="step-label" style="margin-top:14px">Escribila</label>
         <input type="text" class="step-input"
           oninput="wizardData.usado_version_custom = this.value"
           value="${wizardData.usado_version_custom || ''}"
@@ -1129,6 +1114,11 @@ function renderStep5_Version() {
       ` : ''}
     </div>
   `;
+}
+function seleccionarVersion(v) {
+  wizardData.usado_version = v || null;
+  // si elige "Otra" re-renderizo para mostrar el input. Si no, no re-renderizo (evita el reset del foco)
+  if (v === '__OTRA__') renderWizard();
 }
 
 function renderStep6_Equiv0km() {
