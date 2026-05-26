@@ -166,8 +166,10 @@ input, select, textarea { font-family: var(--font); }
   background: rgba(15,41,64,0.6);
   display: none; align-items: center; justify-content: center;
   z-index: 2000;
+  flex-direction: column; gap: 14px;
 }
 .loading.active { display: flex; }
+.loading-text { color: white; font-size: 14px; font-weight: 500; }
 .spinner {
   width: 40px; height: 40px;
   border: 4px solid rgba(255,255,255,0.3);
@@ -176,6 +178,210 @@ input, select, textarea { font-family: var(--font); }
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── TOAST ─── */
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(120%);
+  background: var(--primary); color: white;
+  padding: 12px 22px; border-radius: 10px;
+  font-size: 14px; font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  z-index: 3000; opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  max-width: 90%; text-align: center;
+}
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.toast.error { background: var(--red); }
+.toast.success { background: var(--green); }
+
+/* ─── TABS (vendedor: nueva / mis tasaciones) ─── */
+.tabs-nav {
+  display: flex; gap: 0;
+  background: white;
+  border-bottom: 1px solid var(--grey-2);
+  margin: -24px -16px 24px;
+  padding: 0 16px;
+  position: sticky; top: 56px; z-index: 50;
+}
+.tab-btn {
+  padding: 14px 18px;
+  background: none; color: var(--grey-4);
+  font-size: 14px; font-weight: 500;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+}
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ─── WIZARD ─── */
+.wizard-container { max-width: 600px; margin: 0 auto; }
+.wizard-progress {
+  display: flex; gap: 4px; margin-bottom: 18px;
+}
+.wizard-progress .dot {
+  flex: 1; height: 4px; background: var(--grey-2); border-radius: 2px;
+  transition: background 0.2s;
+}
+.wizard-progress .dot.done { background: var(--green); }
+.wizard-progress .dot.current { background: var(--accent); }
+.wizard-step {
+  background: white;
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  box-shadow: var(--shadow);
+}
+.step-num {
+  font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--grey-3); font-weight: 600; margin-bottom: 6px;
+}
+.step-title {
+  font-size: 22px; font-weight: 700; color: var(--primary);
+  margin-bottom: 18px; line-height: 1.3;
+}
+.step-help { font-size: 13px; color: var(--grey-4); margin-bottom: 16px; line-height: 1.5; }
+.step-input, .step-select, .step-textarea {
+  width: 100%; padding: 14px 16px;
+  border: 2px solid var(--grey-2);
+  border-radius: 8px; font-size: 15px;
+  margin-bottom: 14px; outline: none;
+  background: white;
+  transition: border-color 0.2s;
+}
+.step-input:focus, .step-select:focus, .step-textarea:focus { border-color: var(--primary); }
+.step-textarea { resize: vertical; min-height: 80px; font-family: var(--font); }
+.step-input.number-big { font-family: var(--mono); font-size: 22px; padding: 18px 16px; }
+.step-label { font-size: 13px; font-weight: 600; color: var(--primary); margin-bottom: 6px; display: block; }
+
+.option-pills {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px;
+}
+.option-pill {
+  padding: 10px 16px;
+  background: white;
+  border: 2px solid var(--grey-2);
+  border-radius: 24px;
+  font-size: 14px; font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.option-pill:hover { border-color: var(--primary); }
+.option-pill.active {
+  background: var(--primary); color: white;
+  border-color: var(--primary);
+}
+.option-pill.yes-no { min-width: 120px; text-align: center; }
+
+.wizard-nav {
+  display: flex; gap: 10px; margin-top: 22px;
+}
+.wizard-nav button {
+  padding: 14px 22px;
+  border-radius: 8px;
+  font-size: 14px; font-weight: 600;
+  transition: all 0.2s;
+}
+.wizard-nav .btn-back {
+  background: var(--grey-2); color: var(--grey-4);
+}
+.wizard-nav .btn-back:hover { background: var(--grey-3); color: white; }
+.wizard-nav .btn-next {
+  background: var(--primary); color: white;
+  flex: 1;
+}
+.wizard-nav .btn-next:hover { background: var(--primary-light); }
+.wizard-nav .btn-submit {
+  background: var(--accent); color: white;
+  flex: 1;
+}
+.wizard-nav .btn-submit:hover { background: var(--accent-dark); }
+.wizard-nav button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ─── FOTOS ─── */
+.fotos-uploader {
+  border: 2px dashed var(--grey-2);
+  border-radius: 10px;
+  padding: 24px; text-align: center;
+  margin-bottom: 14px;
+  background: var(--grey-1);
+  transition: border-color 0.2s;
+}
+.fotos-uploader:hover { border-color: var(--primary); }
+.fotos-uploader input { display: none; }
+.fotos-uploader label {
+  cursor: pointer;
+  font-size: 14px; color: var(--primary); font-weight: 600;
+}
+.fotos-uploader .hint { font-size: 12px; color: var(--grey-3); margin-top: 6px; }
+.fotos-preview {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-bottom: 14px;
+}
+.foto-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--grey-2);
+}
+.foto-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.foto-thumb button {
+  position: absolute; top: 4px; right: 4px;
+  width: 24px; height: 24px;
+  background: rgba(0,0,0,0.65);
+  color: white; font-size: 14px; font-weight: 700;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ─── MIS TASACIONES ─── */
+.tas-list { display: flex; flex-direction: column; gap: 12px; }
+.tas-card {
+  background: white; border-radius: var(--radius);
+  padding: 16px; box-shadow: var(--shadow);
+  cursor: pointer;
+  border-left: 4px solid transparent;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.tas-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+.tas-card.pendiente_admin  { border-left-color: var(--orange); }
+.tas-card.rebotada         { border-left-color: var(--red); }
+.tas-card.en_reventa       { border-left-color: var(--primary); }
+.tas-card.precios_recibidos{ border-left-color: var(--primary); }
+.tas-card.precio_al_vendedor { border-left-color: var(--green); }
+.tas-card.cerrada          { border-left-color: var(--grey-3); }
+.tas-card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.tas-card-title { font-size: 15px; font-weight: 600; color: var(--primary); margin-bottom: 2px; }
+.tas-card-sub { font-size: 12px; color: var(--grey-4); }
+.tas-card-estado {
+  font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  font-weight: 700; padding: 4px 8px; border-radius: 12px;
+  white-space: nowrap;
+}
+.estado-pendiente_admin    { background: var(--orange-light); color: var(--orange); }
+.estado-rebotada           { background: var(--red-light); color: var(--red); }
+.estado-en_reventa         { background: #dbeafe; color: #1e40af; }
+.estado-precios_recibidos  { background: #dbeafe; color: #1e40af; }
+.estado-precio_al_vendedor { background: var(--green-light); color: var(--green); }
+.estado-cerrada            { background: var(--grey-2); color: var(--grey-4); }
+
+.tas-list-empty {
+  background: white; border-radius: var(--radius);
+  padding: 48px 24px; text-align: center;
+  box-shadow: var(--shadow);
+  color: var(--grey-4); font-size: 14px;
+}
+.tas-list-empty .emoji { display: block; font-size: 36px; margin-bottom: 10px; }
+
+.filtros-bar {
+  display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.filtro-pill {
+  padding: 6px 12px; background: white; border: 1.5px solid var(--grey-2);
+  border-radius: 16px; font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  color: var(--grey-4);
+}
+.filtro-pill.active { background: var(--primary); color: white; border-color: var(--primary); }
 
 </style>
 </head>
@@ -210,11 +416,30 @@ input, select, textarea { font-family: var(--font); }
 
   <!-- VISTA VENDEDOR -->
   <div class="view" id="vendedorView">
-    <div class="view-placeholder">
-      <span class="emoji">🚗</span>
-      <h2>Vista Vendedor</h2>
-      <p>Acá va el wizard de 12 pasos para cargar una tasación: datos del cliente, datos del usado, 0km equivalente, BYD que pretende el cliente, precio ofrecido, stock con entrega rápida y fotos.</p>
-      <span class="badge">FASE 1 — Próximamente</span>
+    <div class="tabs-nav">
+      <button class="tab-btn active" id="tabNueva" onclick="cambiarTabVendedor('nueva')">➕ Nueva tasación</button>
+      <button class="tab-btn" id="tabMis" onclick="cambiarTabVendedor('mis')">📋 Mis tasaciones</button>
+    </div>
+
+    <!-- Tab: Nueva tasación (wizard) -->
+    <div id="vendedorTabNueva" class="vendedor-tab" style="display:block;">
+      <div class="wizard-container">
+        <div class="wizard-progress" id="wizardProgress"></div>
+        <div id="wizardStep"></div>
+        <div class="wizard-nav" id="wizardNav"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Mis tasaciones -->
+    <div id="vendedorTabMis" class="vendedor-tab" style="display:none;">
+      <div class="filtros-bar" id="misFiltros">
+        <button class="filtro-pill active" onclick="filtrarMisTasaciones(this,'todas')">Todas</button>
+        <button class="filtro-pill" onclick="filtrarMisTasaciones(this,'pendiente_admin')">⏳ Pendientes</button>
+        <button class="filtro-pill" onclick="filtrarMisTasaciones(this,'rebotada')">🔁 A corregir</button>
+        <button class="filtro-pill" onclick="filtrarMisTasaciones(this,'precio_al_vendedor')">✅ Con precio</button>
+        <button class="filtro-pill" onclick="filtrarMisTasaciones(this,'cerrada')">🗂️ Cerradas</button>
+      </div>
+      <div id="misTasacionesList" class="tas-list"></div>
     </div>
   </div>
 
@@ -222,7 +447,7 @@ input, select, textarea { font-family: var(--font); }
   <div class="view" id="adminView">
     <div class="view-placeholder">
       <span class="emoji">📊</span>
-      <h2>Vista Admin (Agustín)</h2>
+      <h2>Vista Admin</h2>
       <p>Tabs Pendientes / En reventa / Precios recibidos / Cerradas. Acciones: rebotar, enviar a reventas, ranking de precios con descuento configurable (7/9/12%), reenviar para mejorar, enviar precio final al vendedor. Comparación CCA + Fórmula FMG + IA de fotos.</p>
       <span class="badge">FASE 2 — Próximamente</span>
     </div>
@@ -258,7 +483,11 @@ input, select, textarea { font-family: var(--font); }
 <!-- ═══════════════════════ LOADING ═══════════════════════ -->
 <div class="loading" id="loadingOverlay">
   <div class="spinner"></div>
+  <div class="loading-text" id="loadingText"></div>
 </div>
+
+<!-- ═══════════════════════ TOAST ═══════════════════════ -->
+<div class="toast" id="toast"></div>
 
 
 <script>
@@ -323,8 +552,20 @@ async function sbPatch(table, qs, body) {
 }
 
 // ─── LOADING / UTILS ─────────────────────────────────────────────
-function showLoading() { document.getElementById('loadingOverlay').classList.add('active'); }
+function showLoading(text = '') {
+  document.getElementById('loadingText').textContent = text;
+  document.getElementById('loadingOverlay').classList.add('active');
+}
 function hideLoading() { document.getElementById('loadingOverlay').classList.remove('active'); }
+
+let _toastTimer = null;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.className = 'toast ' + type; }, 3500);
+}
 
 function showLoginError(msg) {
   const el = document.getElementById('loginError');
@@ -335,6 +576,26 @@ function showLoginError(msg) {
 
 function _esSuperadmin() {
   return currentUser && SUPERADMINS_USUARIOS.includes(currentUser.usuario);
+}
+
+function generarUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+function formatARS(n) {
+  if (n == null || isNaN(n)) return '—';
+  return '$ ' + Math.round(Number(n)).toLocaleString('es-AR');
+}
+
+function formatFechaCorta(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
+    ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 }
 
 // ─── LOGIN ───────────────────────────────────────────────────────
@@ -369,7 +630,7 @@ async function doLogin() {
   }
 }
 
-function continuarLogin() {
+async function continuarLogin() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('headerUser').textContent = `${currentUser.nombre} · ${currentUser.rol}`;
@@ -379,10 +640,22 @@ function continuarLogin() {
 
   if (currentUser.rol === 'admin') {
     document.getElementById('adminView').classList.add('active');
+    // El admin también puede crear tasaciones como vendedor → cargar CCA igual
+    loadCCA().catch(e => console.error('CCA load fail:', e));
   } else if (currentUser.rol === 'reventa') {
     document.getElementById('reventaView').classList.add('active');
   } else {
     document.getElementById('vendedorView').classList.add('active');
+    showLoading('Cargando datos...');
+    try {
+      await loadCCA();
+    } catch (e) {
+      console.error('CCA load fail:', e);
+      showToast('No se pudieron cargar los precios de referencia', 'error');
+    } finally {
+      hideLoading();
+    }
+    iniciarWizard();
   }
 }
 
@@ -444,6 +717,723 @@ async function confirmarCambioClave() {
   } finally {
     hideLoading();
   }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// FASE 1 — Wizard del vendedor + Mis tasaciones
+// ═════════════════════════════════════════════════════════════════
+
+// ─── DATA EXTERNA ────────────────────────────────────────────────
+// Reusamos la sheet CCA de TGA (mismas marcas/modelos de usados)
+const CCA_CSV_URL = 'https://docs.google.com/spreadsheets/d/1MJWeHCTbxdqBJwifzgNbHssLLsxAwaSkb66Zc9yv3ko/gviz/tq?tqx=out:csv&gid=904791552';
+
+// TODO: reemplazar por sheet propia cuando Fer la cree
+//       (ver supabase/sheet-byd-template.md)
+const BYD_MODELOS_HARDCODED = [
+  { modelo: 'DOLPHIN',    versiones: ['GS', 'GL'] },
+  { modelo: 'SEAL',       versiones: ['Design', 'Excellence AWD'] },
+  { modelo: 'YUAN PLUS',  versiones: ['Comfort', 'Premium'] },     // (ATTO 3 en otros mercados)
+  { modelo: 'HAN',        versiones: ['EV', 'DM-i Champion'] },
+  { modelo: 'SONG PLUS',  versiones: ['Champion DM-i', 'Flagship'] },
+  { modelo: 'SHARK',      versiones: ['Premium'] }
+];
+
+const PROVINCIAS_AR = [
+  'CABA', 'Buenos Aires', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes',
+  'Entre Ríos', 'Formosa', 'Jujuy', 'La Pampa', 'La Rioja', 'Mendoza', 'Misiones',
+  'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe',
+  'Santiago del Estero', 'Tierra del Fuego', 'Tucumán'
+];
+
+let ccaData = [];
+
+// ─── CSV PARSER ──────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.split('\n');
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseCSVLine(lines[i]);
+    if (vals.length < 2) continue;
+    const obj = {};
+    headers.forEach((h, idx) => obj[h.trim().replace(/"/g, '')] = (vals[idx] || '').trim().replace(/"/g, ''));
+    rows.push(obj);
+  }
+  return rows;
+}
+function parseCSVLine(line) {
+  const result = []; let current = ''; let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"' && line[i + 1] === '"') { current += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { current += c; }
+    } else {
+      if (c === '"') { inQuotes = true; }
+      else if (c === ',') { result.push(current); current = ''; }
+      else { current += c; }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+async function loadCCA() {
+  const res = await fetch(CCA_CSV_URL);
+  if (!res.ok) throw new Error('CCA HTTP ' + res.status);
+  const text = await res.text();
+  ccaData = parseCSV(text);
+  console.log('CCA cargado:', ccaData.length, 'registros');
+}
+
+// Helpers para sacar marcas/modelos/versiones del CCA
+function getCCAMarcas() {
+  const set = new Set();
+  ccaData.forEach(r => { if (r['Marca']) set.add(r['Marca'].trim().toUpperCase()); });
+  return [...set].sort();
+}
+function getCCAModelos(marca) {
+  const m = marca.toUpperCase().trim();
+  const set = new Set();
+  ccaData.forEach(r => {
+    if ((r['Marca'] || '').trim().toUpperCase() === m && r['Modelo']) set.add(r['Modelo'].trim());
+  });
+  return [...set].sort();
+}
+function getCCAVersiones(marca, modelo) {
+  const m = marca.toUpperCase().trim();
+  const mod = modelo.trim();
+  const set = new Set();
+  ccaData.forEach(r => {
+    if ((r['Marca'] || '').trim().toUpperCase() === m
+      && (r['Modelo'] || '').trim() === mod
+      && r['Versión']) set.add(r['Versión'].trim());
+  });
+  return [...set].sort();
+}
+
+// ─── SUPABASE STORAGE UPLOAD ─────────────────────────────────────
+async function sbUpload(bucket, path, file) {
+  const url = `${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_ANON,
+      'Authorization': `Bearer ${SUPABASE_ANON}`,
+      'Content-Type': file.type
+    },
+    body: file
+  });
+  if (!res.ok) throw new Error('Upload failed: ' + await res.text());
+  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+}
+
+// ═════════════════════════════════════════════════════════════════
+// WIZARD DEL VENDEDOR (12 pasos)
+// ═════════════════════════════════════════════════════════════════
+let wizardData = {};
+let currentStep = 0;
+let fotos = [];          // File[]
+let fotoPreviews = [];   // data-URLs
+let editingTasacionId = null;  // si != null, estamos editando una rebotada
+const TOTAL_STEPS = 12;
+
+function iniciarWizard() {
+  wizardData = {};
+  fotos = [];
+  fotoPreviews = [];
+  currentStep = 0;
+  editingTasacionId = null;
+  renderWizard();
+}
+
+function renderWizard() {
+  // Progress dots
+  let progressHTML = '';
+  for (let i = 0; i < TOTAL_STEPS; i++) {
+    const cls = i < currentStep ? 'done' : (i === currentStep ? 'current' : '');
+    progressHTML += `<div class="dot ${cls}"></div>`;
+  }
+  document.getElementById('wizardProgress').innerHTML = progressHTML;
+
+  // Step content
+  const renderers = [
+    renderStep1_Cliente,
+    renderStep2_Marca,
+    renderStep3_Anio,
+    renderStep4_Modelo,
+    renderStep5_Version,
+    renderStep6_Equiv0km,
+    renderStep7_Km,
+    renderStep8_ColorProvincia,
+    renderStep9_BYD,
+    renderStep10_PrecioOfrecido,
+    renderStep11_StockRapido,
+    renderStep12_Fotos
+  ];
+  document.getElementById('wizardStep').innerHTML = renderers[currentStep]();
+
+  // Nav
+  const isLast = currentStep === TOTAL_STEPS - 1;
+  const navHTML = `
+    ${currentStep > 0 ? '<button class="btn-back" onclick="wizardBack()">← Atrás</button>' : ''}
+    ${isLast
+      ? `<button class="btn-submit" onclick="submitTasacion()">${editingTasacionId ? 'Reenviar tasación corregida' : 'Enviar tasación'} →</button>`
+      : `<button class="btn-next" onclick="wizardNext()">Siguiente →</button>`
+    }
+  `;
+  document.getElementById('wizardNav').innerHTML = navHTML;
+
+  // Post-render hooks específicos del paso
+  if (currentStep === 11) renderFotosPreview();
+}
+
+function wizardBack() {
+  if (currentStep > 0) { currentStep--; renderWizard(); window.scrollTo(0, 0); }
+}
+
+function wizardNext() {
+  const v = validarStep(currentStep);
+  if (!v.ok) { showToast(v.msg, 'error'); return; }
+  if (currentStep < TOTAL_STEPS - 1) { currentStep++; renderWizard(); window.scrollTo(0, 0); }
+}
+
+function validarStep(step) {
+  switch (step) {
+    case 0:
+      if (!(wizardData.cliente_nombre || '').trim()) return { ok: false, msg: 'Ingresá el nombre del cliente' };
+      return { ok: true };
+    case 1:
+      if (!wizardData.usado_marca) return { ok: false, msg: 'Elegí una marca' };
+      return { ok: true };
+    case 2:
+      if (!wizardData.usado_anio) return { ok: false, msg: 'Elegí el año' };
+      return { ok: true };
+    case 3:
+      if (!wizardData.usado_modelo) return { ok: false, msg: 'Elegí un modelo' };
+      return { ok: true };
+    case 4:
+      // versión es opcional para algunas marcas. La dejamos opcional.
+      return { ok: true };
+    case 5:
+      // 0km equivalente: todo opcional (puede no aplicar)
+      return { ok: true };
+    case 6:
+      if (!wizardData.usado_km || wizardData.usado_km < 0) return { ok: false, msg: 'Ingresá los kilómetros' };
+      return { ok: true };
+    case 7:
+      if (!(wizardData.usado_color || '').trim()) return { ok: false, msg: 'Ingresá el color' };
+      if (!wizardData.usado_provincia) return { ok: false, msg: 'Elegí la provincia de radicación' };
+      return { ok: true };
+    case 8:
+      if (!wizardData.byd_modelo) return { ok: false, msg: 'Elegí el modelo BYD que pretende el cliente' };
+      return { ok: true };
+    case 9:
+      if (!wizardData.precio_ofrecido_cliente || wizardData.precio_ofrecido_cliente <= 0)
+        return { ok: false, msg: 'Ingresá el precio ofrecido al cliente' };
+      return { ok: true };
+    case 10:
+      if (wizardData.stock_entrega_rapida == null)
+        return { ok: false, msg: 'Indicá si ofreciste stock con entrega rápida' };
+      return { ok: true };
+    case 11:
+      // Fotos opcionales pero recomendadas (warning, no bloquea)
+      return { ok: true };
+  }
+  return { ok: true };
+}
+
+// ─── STEPS ───────────────────────────────────────────────────────
+function _stepHeader(num, titulo, help) {
+  return `
+    <div class="step-num">Paso ${num} de ${TOTAL_STEPS}</div>
+    <div class="step-title">${titulo}</div>
+    ${help ? `<div class="step-help">${help}</div>` : ''}
+  `;
+}
+
+function renderStep1_Cliente() {
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(1, '👤 Datos del cliente')}
+      <label class="step-label">Nombre y apellido del cliente</label>
+      <input type="text" class="step-input" id="inp_cliente"
+        value="${wizardData.cliente_nombre || ''}"
+        oninput="wizardData.cliente_nombre = this.value"
+        placeholder="Ej. Juan Pérez" autofocus>
+    </div>
+  `;
+}
+
+function renderStep2_Marca() {
+  const marcas = getCCAMarcas();
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(2, '🚗 Marca del usado')}
+      <label class="step-label">Buscá la marca</label>
+      <input type="text" class="step-input" id="filtroMarca"
+        oninput="filtrarMarcas(this.value)" placeholder="Escribí para filtrar...">
+      <div class="option-pills" id="pillsMarca">
+        ${marcas.map(m => `<button class="option-pill ${wizardData.usado_marca === m ? 'active' : ''}"
+          onclick="seleccionarMarca('${m.replace(/'/g, "\\'")}')">${m}</button>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function filtrarMarcas(q) {
+  const qn = (q || '').toLowerCase().trim();
+  document.querySelectorAll('#pillsMarca .option-pill').forEach(b => {
+    b.style.display = b.textContent.toLowerCase().includes(qn) ? '' : 'none';
+  });
+}
+
+function seleccionarMarca(m) {
+  wizardData.usado_marca = m;
+  // reset campos dependientes
+  wizardData.usado_modelo = null;
+  wizardData.usado_version = null;
+  renderWizard();
+}
+
+function renderStep3_Anio() {
+  const actual = new Date().getFullYear();
+  const anios = [];
+  for (let y = actual; y >= 1990; y--) anios.push(y);
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(3, '📅 Año del vehículo')}
+      <div class="option-pills">
+        ${anios.map(y => `<button class="option-pill ${wizardData.usado_anio === y ? 'active' : ''}"
+          onclick="wizardData.usado_anio = ${y}; renderWizard();">${y}</button>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderStep4_Modelo() {
+  if (!wizardData.usado_marca) return `<div class="wizard-step"><p>Volvé y elegí una marca primero.</p></div>`;
+  const modelos = getCCAModelos(wizardData.usado_marca);
+  if (modelos.length === 0) {
+    return `
+      <div class="wizard-step">
+        ${_stepHeader(4, '🏷️ Modelo')}
+        <p class="step-help">No tenemos modelos cargados para <strong>${wizardData.usado_marca}</strong>. Escribilo manualmente:</p>
+        <input type="text" class="step-input" value="${wizardData.usado_modelo || ''}"
+          oninput="wizardData.usado_modelo = this.value" placeholder="Modelo">
+      </div>
+    `;
+  }
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(4, '🏷️ Modelo de ' + wizardData.usado_marca)}
+      <input type="text" class="step-input" id="filtroModelo"
+        oninput="filtrarModelos(this.value)" placeholder="Escribí para filtrar...">
+      <div class="option-pills" id="pillsModelo">
+        ${modelos.map(m => `<button class="option-pill ${wizardData.usado_modelo === m ? 'active' : ''}"
+          onclick="seleccionarModelo('${m.replace(/'/g, "\\'")}')">${m}</button>`).join('')}
+      </div>
+    </div>
+  `;
+}
+function filtrarModelos(q) {
+  const qn = (q || '').toLowerCase().trim();
+  document.querySelectorAll('#pillsModelo .option-pill').forEach(b => {
+    b.style.display = b.textContent.toLowerCase().includes(qn) ? '' : 'none';
+  });
+}
+function seleccionarModelo(m) {
+  wizardData.usado_modelo = m;
+  wizardData.usado_version = null;
+  renderWizard();
+}
+
+function renderStep5_Version() {
+  if (!wizardData.usado_marca || !wizardData.usado_modelo) {
+    return `<div class="wizard-step"><p>Volvé y completá marca + modelo primero.</p></div>`;
+  }
+  const versiones = getCCAVersiones(wizardData.usado_marca, wizardData.usado_modelo);
+  if (versiones.length === 0) {
+    return `
+      <div class="wizard-step">
+        ${_stepHeader(5, '⚙️ Versión')}
+        <p class="step-help">No tenemos versiones cargadas. Escribila manualmente (opcional):</p>
+        <input type="text" class="step-input" value="${wizardData.usado_version || ''}"
+          oninput="wizardData.usado_version = this.value" placeholder="Versión (opcional)">
+      </div>
+    `;
+  }
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(5, '⚙️ Versión de ' + wizardData.usado_modelo)}
+      <div class="option-pills">
+        ${versiones.map(v => `<button class="option-pill ${wizardData.usado_version === v ? 'active' : ''}"
+          onclick="wizardData.usado_version = '${v.replace(/'/g, "\\'")}'; renderWizard();">${v}</button>`).join('')}
+        <button class="option-pill ${wizardData.usado_version === '__OTRA__' ? 'active' : ''}"
+          onclick="wizardData.usado_version = '__OTRA__'; renderWizard();">Otra / no sé</button>
+      </div>
+      ${wizardData.usado_version === '__OTRA__' ? `
+        <label class="step-label">Escribila</label>
+        <input type="text" class="step-input"
+          oninput="wizardData.usado_version_custom = this.value"
+          value="${wizardData.usado_version_custom || ''}"
+          placeholder="Versión">
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderStep6_Equiv0km() {
+  const marcaUsado = (wizardData.usado_marca || '').toUpperCase();
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(6, '🆕 ¿Existe un 0km equivalente del mismo modelo?')}
+      <div class="step-help">Opcional. Solo si <strong>${marcaUsado}</strong> sigue fabricando un modelo equivalente nuevo hoy. Es información referencial para el análisis. <strong>No vas a ver precios.</strong></div>
+      <div class="option-pills">
+        <button class="option-pill ${wizardData.equiv_0km_existe === 'no' ? 'active' : ''}"
+          onclick="setEquivOption('no')">— No aplica / no sé —</button>
+        <button class="option-pill ${wizardData.equiv_0km_existe === 'si' ? 'active' : ''}"
+          onclick="setEquivOption('si')">Sí, hay equivalente</button>
+      </div>
+      ${wizardData.equiv_0km_existe === 'si' ? `
+        <label class="step-label" style="margin-top:14px">Modelo 0km equivalente</label>
+        <input type="text" class="step-input"
+          oninput="wizardData.equiv_0km_modelo = this.value"
+          value="${wizardData.equiv_0km_modelo || ''}"
+          placeholder="Ej. ${marcaUsado} ${wizardData.usado_modelo || '...'} versión actual">
+        <label class="step-label">Versión 0km equivalente (opcional)</label>
+        <input type="text" class="step-input"
+          oninput="wizardData.equiv_0km_version = this.value"
+          value="${wizardData.equiv_0km_version || ''}"
+          placeholder="Versión actual">
+      ` : ''}
+    </div>
+  `;
+}
+function setEquivOption(v) {
+  wizardData.equiv_0km_existe = v;
+  if (v === 'no') {
+    wizardData.equiv_0km_modelo = null;
+    wizardData.equiv_0km_version = null;
+  } else {
+    wizardData.equiv_0km_marca = (wizardData.usado_marca || '').toUpperCase();
+  }
+  renderWizard();
+}
+
+function renderStep7_Km() {
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(7, '📏 Kilómetros actuales')}
+      <input type="number" class="step-input number-big" min="0" step="1000"
+        value="${wizardData.usado_km || ''}"
+        oninput="wizardData.usado_km = parseInt(this.value) || null"
+        placeholder="Ej. 45000" autofocus>
+    </div>
+  `;
+}
+
+function renderStep8_ColorProvincia() {
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(8, '🎨 Color y radicación')}
+      <label class="step-label">Color del vehículo</label>
+      <input type="text" class="step-input"
+        value="${wizardData.usado_color || ''}"
+        oninput="wizardData.usado_color = this.value"
+        placeholder="Ej. Blanco, Gris, Rojo...">
+      <label class="step-label">Provincia donde está radicado</label>
+      <select class="step-select" onchange="wizardData.usado_provincia = this.value">
+        <option value="">— Elegí una provincia —</option>
+        ${PROVINCIAS_AR.map(p => `<option value="${p}" ${wizardData.usado_provincia === p ? 'selected' : ''}>${p}</option>`).join('')}
+      </select>
+    </div>
+  `;
+}
+
+function renderStep9_BYD() {
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(9, '⚡ 0km BYD que consulta el cliente')}
+      <label class="step-label">Modelo BYD</label>
+      <div class="option-pills">
+        ${BYD_MODELOS_HARDCODED.map(m => `<button class="option-pill ${wizardData.byd_modelo === m.modelo ? 'active' : ''}"
+          onclick="seleccionarBYD('${m.modelo}')">${m.modelo}</button>`).join('')}
+      </div>
+      ${wizardData.byd_modelo ? `
+        <label class="step-label" style="margin-top:8px">Versión</label>
+        <div class="option-pills">
+          ${(BYD_MODELOS_HARDCODED.find(m => m.modelo === wizardData.byd_modelo)?.versiones || []).map(v =>
+            `<button class="option-pill ${wizardData.byd_version === v ? 'active' : ''}"
+              onclick="wizardData.byd_version = '${v}'; renderWizard();">${v}</button>`
+          ).join('')}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+function seleccionarBYD(modelo) {
+  wizardData.byd_modelo = modelo;
+  wizardData.byd_version = null;
+  renderWizard();
+}
+
+function renderStep10_PrecioOfrecido() {
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(10, '💵 Precio ofrecido al cliente', 'Cuánto le ofreciste al cliente por el 0km BYD que consulta (con descuento o promo si aplica). En pesos argentinos.')}
+      <label class="step-label">Precio ofrecido (ARS)</label>
+      <input type="number" class="step-input number-big" min="0" step="100000"
+        value="${wizardData.precio_ofrecido_cliente || ''}"
+        oninput="wizardData.precio_ofrecido_cliente = parseFloat(this.value) || null"
+        placeholder="Ej. 35000000" autofocus>
+      ${wizardData.precio_ofrecido_cliente ? `<p style="text-align:center; color:var(--grey-4); font-size:13px;">${formatARS(wizardData.precio_ofrecido_cliente)}</p>` : ''}
+    </div>
+  `;
+}
+
+function renderStep11_StockRapido() {
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(11, '📦 ¿Le ofreciste unidad de stock con entrega rápida?')}
+      <div class="step-help">Es importante para Agustín saber si el cliente prefiere entrega inmediata o está dispuesto a esperar.</div>
+      <div class="option-pills">
+        <button class="option-pill yes-no ${wizardData.stock_entrega_rapida === true ? 'active' : ''}"
+          onclick="wizardData.stock_entrega_rapida = true; renderWizard();">✅ Sí</button>
+        <button class="option-pill yes-no ${wizardData.stock_entrega_rapida === false ? 'active' : ''}"
+          onclick="wizardData.stock_entrega_rapida = false; renderWizard();">❌ No</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderStep12_Fotos() {
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(12, '📸 Fotos del usado', 'Subí fotos del auto: exterior (4 ángulos), interior, tablero (km), llantas, daños si hay. Los reventas las van a ver para tasar.')}
+      <div class="fotos-uploader">
+        <input type="file" id="fotosInput" multiple accept="image/*" onchange="onFotosChange(event)">
+        <label for="fotosInput">📷 Tocá para agregar fotos</label>
+        <div class="hint">Múltiples fotos · máx 15 MB c/u · JPG/PNG/WEBP/HEIC</div>
+      </div>
+      <div class="fotos-preview" id="fotosPreview"></div>
+    </div>
+  `;
+}
+
+function renderFotosPreview() {
+  const el = document.getElementById('fotosPreview');
+  if (!el) return;
+  el.innerHTML = fotoPreviews.map((src, i) => `
+    <div class="foto-thumb">
+      <img src="${src}" alt="foto ${i + 1}">
+      <button onclick="removerFoto(${i})" title="Quitar">×</button>
+    </div>
+  `).join('');
+}
+
+function onFotosChange(e) {
+  const files = Array.from(e.target.files || []);
+  files.forEach(f => {
+    fotos.push(f);
+    const reader = new FileReader();
+    reader.onload = ev => { fotoPreviews.push(ev.target.result); renderFotosPreview(); };
+    reader.readAsDataURL(f);
+  });
+}
+
+function removerFoto(i) {
+  fotos.splice(i, 1);
+  fotoPreviews.splice(i, 1);
+  renderFotosPreview();
+}
+
+// ─── SUBMIT ──────────────────────────────────────────────────────
+async function submitTasacion() {
+  showLoading('Preparando...');
+  try {
+    const tasId = editingTasacionId || generarUUID();
+
+    // Upload fotos
+    const fotoUrls = editingTasacionId ? (await sbGet('tasaciones', `?id=eq.${tasId}&select=fotos`))[0]?.fotos || [] : [];
+    for (let i = 0; i < fotos.length; i++) {
+      showLoading(`Subiendo foto ${i + 1} de ${fotos.length}...`);
+      const ext = fotos[i].name.split('.').pop() || 'jpg';
+      const path = `${tasId}/foto_${Date.now()}_${i}.${ext}`;
+      const url = await sbUpload('argendreams-fotos', path, fotos[i]);
+      fotoUrls.push(url);
+    }
+
+    showLoading('Guardando tasación...');
+
+    const record = {
+      id: tasId,
+      vendedor_id: currentUser.id,
+      cliente_nombre: (wizardData.cliente_nombre || '').trim(),
+      usado_marca: wizardData.usado_marca,
+      usado_modelo: wizardData.usado_modelo,
+      usado_version: wizardData.usado_version === '__OTRA__' ? (wizardData.usado_version_custom || null) : wizardData.usado_version,
+      usado_anio: wizardData.usado_anio,
+      usado_km: wizardData.usado_km,
+      usado_color: wizardData.usado_color,
+      usado_provincia: wizardData.usado_provincia,
+      equiv_0km_marca: wizardData.equiv_0km_existe === 'si' ? wizardData.equiv_0km_marca : null,
+      equiv_0km_modelo: wizardData.equiv_0km_existe === 'si' ? wizardData.equiv_0km_modelo : null,
+      equiv_0km_version: wizardData.equiv_0km_existe === 'si' ? wizardData.equiv_0km_version : null,
+      byd_modelo: wizardData.byd_modelo,
+      byd_version: wizardData.byd_version,
+      precio_ofrecido_cliente: wizardData.precio_ofrecido_cliente,
+      stock_entrega_rapida: !!wizardData.stock_entrega_rapida,
+      fotos: fotoUrls,
+      estado: 'pendiente_admin'
+    };
+
+    if (editingTasacionId) {
+      // Update: solo los campos editables (no tocar id, vendedor_id, created_at)
+      const upd = { ...record };
+      delete upd.id;
+      delete upd.vendedor_id;
+      await sbPatch('tasaciones', `?id=eq.${tasId}`, upd);
+    } else {
+      await sbPost('tasaciones', record);
+    }
+
+    hideLoading();
+    showToast(editingTasacionId ? 'Tasación reenviada ✓' : 'Tasación enviada ✓', 'success');
+
+    // TODO: disparar analyze-photos cuando esté deployada (fire-and-forget)
+    // TODO: notifyWA('tasacion_pendiente_carga') cuando esté configurada la línea Meta
+
+    // Reset y volver a Mis tasaciones para que vea su carga
+    iniciarWizard();
+    cambiarTabVendedor('mis');
+  } catch (e) {
+    hideLoading();
+    console.error(e);
+    showToast('Error al enviar tasación: ' + e.message, 'error');
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// MIS TASACIONES (vendedor)
+// ═════════════════════════════════════════════════════════════════
+let misTasacionesData = [];
+let misFiltroEstado = 'todas';
+
+function cambiarTabVendedor(tab) {
+  document.querySelectorAll('.vendedor-tab').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  if (tab === 'nueva') {
+    document.getElementById('vendedorTabNueva').style.display = 'block';
+    document.getElementById('tabNueva').classList.add('active');
+  } else {
+    document.getElementById('vendedorTabMis').style.display = 'block';
+    document.getElementById('tabMis').classList.add('active');
+    loadMisTasaciones();
+  }
+}
+
+async function loadMisTasaciones() {
+  const list = document.getElementById('misTasacionesList');
+  list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando...</div>';
+  try {
+    const qs = `?vendedor_id=eq.${currentUser.id}&order=created_at.desc&select=*`;
+    misTasacionesData = await sbGet('tasaciones', qs);
+    renderMisTasaciones();
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⚠️</span>Error cargando. Recargá la página.</div>';
+  }
+}
+
+function renderMisTasaciones() {
+  const list = document.getElementById('misTasacionesList');
+  const filtradas = misFiltroEstado === 'todas'
+    ? misTasacionesData
+    : misTasacionesData.filter(t => t.estado === misFiltroEstado);
+
+  if (filtradas.length === 0) {
+    list.innerHTML = `<div class="tas-list-empty">
+      <span class="emoji">📋</span>
+      ${misTasacionesData.length === 0 ? 'Todavía no cargaste ninguna tasación.' : 'No hay tasaciones con este filtro.'}
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = filtradas.map(t => `
+    <div class="tas-card ${t.estado}" onclick="verDetalleTasacion('${t.id}')">
+      <div class="tas-card-row">
+        <div>
+          <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km</div>
+          <div class="tas-card-sub">Cliente: ${t.cliente_nombre || '—'} · ${formatFechaCorta(t.created_at)}</div>
+          ${t.precio_final_admin ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Precio: ${formatARS(t.precio_final_admin)}</div>` : ''}
+        </div>
+        <span class="tas-card-estado estado-${t.estado}">${labelEstado(t.estado)}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function labelEstado(e) {
+  return ({
+    'pendiente_admin':    'Pendiente',
+    'rebotada':           'A corregir',
+    'en_reventa':         'En reventa',
+    'precios_recibidos':  'Precios recibidos',
+    'precio_al_vendedor': 'Con precio',
+    'cerrada':            'Cerrada'
+  })[e] || e;
+}
+
+function filtrarMisTasaciones(btn, estado) {
+  misFiltroEstado = estado;
+  document.querySelectorAll('#misFiltros .filtro-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMisTasaciones();
+}
+
+async function verDetalleTasacion(id) {
+  // TODO Fase 1.5: modal con detalle. Por ahora solo log + si está rebotada, ofrecer editar.
+  const t = misTasacionesData.find(x => x.id === id);
+  if (!t) return;
+  if (t.estado === 'rebotada') {
+    if (confirm('Esta tasación fue rebotada por el admin. ¿Querés corregirla?\n\n(Los datos actuales se cargan en el wizard para que los edites.)')) {
+      cargarTasacionParaEdicion(t);
+    }
+  } else {
+    // Placeholder simple
+    alert(`Tasación #${id.substring(0, 8)}\n\nEstado: ${labelEstado(t.estado)}\n${t.usado_marca} ${t.usado_modelo} ${t.usado_anio}\nKM: ${t.usado_km}\nColor: ${t.usado_color}\nProvincia: ${t.usado_provincia}\nFotos: ${(t.fotos || []).length}\n\n(Vista detallada — próxima fase.)`);
+  }
+}
+
+function cargarTasacionParaEdicion(t) {
+  wizardData = {
+    cliente_nombre: t.cliente_nombre,
+    usado_marca: t.usado_marca,
+    usado_modelo: t.usado_modelo,
+    usado_version: t.usado_version,
+    usado_anio: t.usado_anio,
+    usado_km: t.usado_km,
+    usado_color: t.usado_color,
+    usado_provincia: t.usado_provincia,
+    equiv_0km_existe: t.equiv_0km_modelo ? 'si' : 'no',
+    equiv_0km_marca: t.equiv_0km_marca,
+    equiv_0km_modelo: t.equiv_0km_modelo,
+    equiv_0km_version: t.equiv_0km_version,
+    byd_modelo: t.byd_modelo,
+    byd_version: t.byd_version,
+    precio_ofrecido_cliente: t.precio_ofrecido_cliente,
+    stock_entrega_rapida: t.stock_entrega_rapida
+  };
+  fotos = [];                  // las fotos viejas ya están en storage, no se re-uploadean
+  fotoPreviews = [];
+  editingTasacionId = t.id;
+  currentStep = 0;
+  cambiarTabVendedor('nueva');
+  renderWizard();
+  showToast('Tasación cargada para editar. Corregí lo necesario y reenviá.', '');
 }
 
 // ─── INIT ────────────────────────────────────────────────────────
