@@ -73,8 +73,9 @@ CREATE TABLE IF NOT EXISTS tasaciones (
   byd_version             TEXT,
   byd_precio_lista        NUMERIC,                -- snapshot al momento de la carga
 
-  -- Oferta del vendedor al cliente
+  -- Oferta del vendedor al cliente (sin FyF — flete y formulario)
   precio_ofrecido_cliente NUMERIC NOT NULL,
+  precio_ofrecido_moneda  TEXT NOT NULL DEFAULT 'USD' CHECK (precio_ofrecido_moneda IN ('USD', 'ARS')),
   stock_entrega_rapida    BOOLEAN NOT NULL DEFAULT false,
 
   -- Fotos
