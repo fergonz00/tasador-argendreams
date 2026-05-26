@@ -899,6 +899,36 @@ function getEquiv0kmRow(marca, modelo, version) {
   ) || null;
 }
 
+// Detecta si el usado (marca + modelo) tiene un equivalente vigente en el scraping.
+// Matching:
+//   - Marca: exacta (case-insensitive)
+//   - Modelo: primero exacto. Si no, parcial (el modelo del usado contiene el del scraping)
+// Devuelve { marca, modelo } del scraping o null si no hay match.
+function detectarEquivVigente(marcaUsado, modeloUsado) {
+  if (!marcaUsado || !modeloUsado) return null;
+  const mUsado = marcaUsado.toUpperCase().trim();
+  const modUsado = modeloUsado.toUpperCase().trim();
+
+  // Marca: ¿está en el scraping?
+  const marcasScrap = getEquiv0kmMarcas();
+  if (!marcasScrap.includes(mUsado)) return null;
+
+  // Modelo exacto
+  const modelosScrap = getEquiv0kmModelos(mUsado);
+  const exactoMatch = modelosScrap.find(m => m.toUpperCase() === modUsado);
+  if (exactoMatch) return { marca: mUsado, modelo: exactoMatch };
+
+  // Modelo parcial: el del usado empieza/contiene al del scraping
+  // Ej: usado "GOL TREND" → scraping tiene "GOL" → match
+  const parcial = modelosScrap.find(m => {
+    const mUp = m.toUpperCase();
+    return modUsado.includes(mUp) || mUp.includes(modUsado);
+  });
+  if (parcial) return { marca: mUsado, modelo: parcial };
+
+  return null;
+}
+
 // Helpers para sacar marcas/modelos/versiones/años del CCA
 // Los headers del CSV son lowercase: marca, modelo, version, "", 2025, 2024, ...
 function getCCAAnios() {
@@ -1054,12 +1084,15 @@ function validarStep(step) {
       if (!wizardData.usado_version) return { ok: false, msg: 'Elegí una versión' };
       return { ok: true };
     case 5:
-      // 0km equivalente: hay que elegir Sí (vigente) o No (descontinuado)
-      if (!wizardData.equiv_0km_existe) return { ok: false, msg: 'Indicá si el modelo sigue vigente o no' };
-      if (wizardData.equiv_0km_existe === 'si') {
-        if (!wizardData.equiv_0km_marca) return { ok: false, msg: 'Elegí la marca del 0km equivalente' };
-        if (!wizardData.equiv_0km_modelo) return { ok: false, msg: 'Elegí el modelo 0km equivalente' };
-        // Versión opcional (algunos modelos no tienen sub-versiones en el scraping)
+      // 0km equivalente: ahora es automático.
+      // - Si hay match en el scraping y hay 2+ versiones, exigimos elegir versión
+      // - Si hay 1 versión, ya quedó seteada
+      // - Si no hay match, dejamos pasar
+      if (wizardData.equiv_0km_existe === 'si' && wizardData.equiv_0km_marca && wizardData.equiv_0km_modelo) {
+        const versiones = getEquiv0kmVersiones(wizardData.equiv_0km_marca, wizardData.equiv_0km_modelo);
+        if (versiones.length > 1 && !wizardData.equiv_0km_version) {
+          return { ok: false, msg: 'Elegí la versión del 0km equivalente' };
+        }
       }
       return { ok: true };
     case 6:
@@ -1216,70 +1249,56 @@ function seleccionarVersion(v) {
 }
 
 function renderStep6_Equiv0km() {
-  const marcas = getEquiv0kmMarcas();
-  const modelos = wizardData.equiv_0km_marca ? getEquiv0kmModelos(wizardData.equiv_0km_marca) : [];
-  const versiones = (wizardData.equiv_0km_marca && wizardData.equiv_0km_modelo)
-    ? getEquiv0kmVersiones(wizardData.equiv_0km_marca, wizardData.equiv_0km_modelo) : [];
+  const match = detectarEquivVigente(wizardData.usado_marca, wizardData.usado_modelo);
 
-  return `
-    <div class="wizard-step">
-      ${_stepHeader(6, '🆕 ¿Hay un 0km equivalente vigente?', 'Opcional. <strong>Solo aplica si el modelo del usado se sigue fabricando hoy en día.</strong> Si es un modelo descontinuado, dejá vacío y seguí.')}
-
-      <div class="option-pills" style="margin-bottom:14px">
-        <button class="option-pill ${wizardData.equiv_0km_existe === 'no' ? 'active' : ''}"
-          onclick="setEquivOption('no')">— No aplica / descontinuado —</button>
-        <button class="option-pill ${wizardData.equiv_0km_existe === 'si' ? 'active' : ''}"
-          onclick="setEquivOption('si')">Sí, sigue vigente</button>
-      </div>
-
-      ${wizardData.equiv_0km_existe === 'si' ? `
-        <label class="step-label">Marca del 0km equivalente</label>
-        <select class="step-select" onchange="seleccionarEquivMarca(this.value)">
-          <option value="">— Elegí una marca —</option>
-          ${marcas.map(m => `<option value="${m}" ${wizardData.equiv_0km_marca === m ? 'selected' : ''}>${m}</option>`).join('')}
-        </select>
-
-        ${wizardData.equiv_0km_marca ? `
-          <label class="step-label" style="margin-top:14px">Modelo 0km</label>
-          ${modelos.length === 0
-            ? `<p class="step-help" style="color:var(--red)">No tenemos modelos cargados para ${wizardData.equiv_0km_marca} en el scraping.</p>`
-            : `<select class="step-select" onchange="seleccionarEquivModelo(this.value)">
-                <option value="">— Elegí un modelo —</option>
-                ${modelos.map(m => `<option value="${m}" ${wizardData.equiv_0km_modelo === m ? 'selected' : ''}>${m}</option>`).join('')}
-              </select>`
-          }
-        ` : ''}
-
-        ${wizardData.equiv_0km_modelo && versiones.length > 0 ? `
-          <label class="step-label" style="margin-top:14px">Versión 0km</label>
-          <select class="step-select" onchange="seleccionarEquivVersion(this.value)">
-            <option value="">— Elegí una versión —</option>
-            ${versiones.map(v => `<option value="${v}" ${wizardData.equiv_0km_version === v ? 'selected' : ''}>${v}</option>`).join('')}
-          </select>
-        ` : ''}
-      ` : ''}
-    </div>
-  `;
-}
-function setEquivOption(v) {
-  wizardData.equiv_0km_existe = v;
-  if (v === 'no') {
+  // CASO 1: NO hay match → no hay equivalente vigente, mensaje + seguir
+  if (!match) {
+    wizardData.equiv_0km_existe = 'no';
     wizardData.equiv_0km_marca = null;
     wizardData.equiv_0km_modelo = null;
     wizardData.equiv_0km_version = null;
+    return `
+      <div class="wizard-step">
+        ${_stepHeader(6, '🆕 0km equivalente vigente')}
+        <div style="background:var(--grey-1); padding:18px; border-radius:10px; text-align:center; margin-bottom:8px;">
+          <p style="font-size:14px; color:var(--grey-4); line-height:1.5;">
+            <strong>${wizardData.usado_marca} ${wizardData.usado_modelo}</strong> no figura en el listado de 0km vigentes de elcerokm.
+          </p>
+          <p style="font-size:13px; color:var(--grey-3); margin-top:8px;">Saltamos este paso. Tocá <strong>Siguiente</strong>.</p>
+        </div>
+      </div>
+    `;
   }
-  renderWizard();
-}
-function seleccionarEquivMarca(m) {
-  wizardData.equiv_0km_marca = m || null;
-  wizardData.equiv_0km_modelo = null;
-  wizardData.equiv_0km_version = null;
-  renderWizard();
-}
-function seleccionarEquivModelo(m) {
-  wizardData.equiv_0km_modelo = m || null;
-  wizardData.equiv_0km_version = null;
-  renderWizard();
+
+  // CASO 2: HAY match → auto-seteo marca + modelo, solo pido versión
+  wizardData.equiv_0km_existe = 'si';
+  wizardData.equiv_0km_marca = match.marca;
+  wizardData.equiv_0km_modelo = match.modelo;
+
+  const versiones = getEquiv0kmVersiones(match.marca, match.modelo);
+
+  return `
+    <div class="wizard-step">
+      ${_stepHeader(6, '🆕 0km equivalente vigente')}
+      <div style="background:#f0fdf4; padding:14px 18px; border-radius:10px; margin-bottom:14px; border-left:4px solid var(--green);">
+        <p style="font-size:13px; color:var(--grey-4); margin-bottom:4px;">Encontrado en elcerokm:</p>
+        <p style="font-size:16px; font-weight:600; color:var(--primary);">${match.marca} ${match.modelo}</p>
+      </div>
+
+      ${versiones.length === 0 ? `
+        <p class="step-help">No hay sub-versiones específicas. Seguí adelante.</p>
+      ` : versiones.length === 1 ? (() => {
+          wizardData.equiv_0km_version = versiones[0];
+          return `<p class="step-help">Única versión vigente: <strong>${versiones[0]}</strong></p>`;
+        })() : `
+        <label class="step-label">¿Qué versión 0km?</label>
+        <select class="step-select" onchange="seleccionarEquivVersion(this.value)">
+          <option value="">— Elegí una versión —</option>
+          ${versiones.map(v => `<option value="${v}" ${wizardData.equiv_0km_version === v ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
+      `}
+    </div>
+  `;
 }
 function seleccionarEquivVersion(v) {
   wizardData.equiv_0km_version = v || null;
