@@ -410,9 +410,23 @@ input, select, textarea { font-family: var(--font); }
     </div>
     <div class="header-actions">
       <span class="user-info" id="headerUser"></span>
+      <button id="btnCambiarModo" style="display:none" onclick="volverSelectorModo()">🔄 Cambiar modo</button>
       <button onclick="salir()">Salir</button>
     </div>
   </header>
+
+  <!-- VISTA: SELECTOR DE MODO (solo admins) -->
+  <div class="view" id="modoSelectorView">
+    <div class="view-placeholder" style="background:transparent; box-shadow:none;">
+      <span class="emoji">👋</span>
+      <h2>Bienvenido</h2>
+      <p style="margin-bottom:24px;">Sos admin — elegí con qué perfil querés trabajar ahora. Podés cambiar de modo en cualquier momento con el botón del header.</p>
+      <div style="display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin-top:20px;">
+        <button onclick="selectMode('admin')" style="background:var(--primary); color:white; padding:18px 28px; border-radius:10px; font-size:15px; font-weight:600; min-width:180px;">📊 Modo Admin</button>
+        <button onclick="selectMode('vendedor')" style="background:var(--accent); color:white; padding:18px 28px; border-radius:10px; font-size:15px; font-weight:600; min-width:180px;">🚗 Modo Vendedor</button>
+      </div>
+    </div>
+  </div>
 
   <!-- VISTA VENDEDOR -->
   <div class="view" id="vendedorView">
@@ -507,6 +521,7 @@ const SUPERADMINS_USUARIOS = ['fngonzalez'];
 
 // ─── STATE ───────────────────────────────────────────────────────
 let currentUser = null;
+let currentMode = null;  // para admins: 'admin' | 'vendedor' — vendedor/reventa puros no usan esto
 
 // ─── SUPABASE HELPERS ────────────────────────────────────────────
 async function sbGet(table, qs = '') {
@@ -634,17 +649,20 @@ async function continuarLogin() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('headerUser').textContent = `${currentUser.nombre} · ${currentUser.rol}`;
+  document.getElementById('btnCambiarModo').style.display = 'none';
 
   // Despachar a la vista según el rol
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
 
   if (currentUser.rol === 'admin') {
-    document.getElementById('adminView').classList.add('active');
-    // El admin también puede crear tasaciones como vendedor → cargar CCA igual
+    // Los admins eligen entre Modo Admin o Modo Vendedor
+    document.getElementById('modoSelectorView').classList.add('active');
+    // Pre-cargo CCA en background por si elige vendedor (no bloquea la elección)
     loadCCA().catch(e => console.error('CCA load fail:', e));
   } else if (currentUser.rol === 'reventa') {
     document.getElementById('reventaView').classList.add('active');
   } else {
+    // Vendedor puro
     document.getElementById('vendedorView').classList.add('active');
     showLoading('Cargando datos...');
     try {
@@ -659,10 +677,37 @@ async function continuarLogin() {
   }
 }
 
+// Selector de modo para admins
+function selectMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('btnCambiarModo').style.display = 'inline-block';
+
+  if (mode === 'admin') {
+    document.getElementById('adminView').classList.add('active');
+    document.getElementById('headerUser').textContent = `${currentUser.nombre} · Modo Admin`;
+  } else if (mode === 'vendedor') {
+    document.getElementById('vendedorView').classList.add('active');
+    document.getElementById('headerUser').textContent = `${currentUser.nombre} · Modo Vendedor`;
+    iniciarWizard();
+  }
+}
+
+function volverSelectorModo() {
+  if (currentUser.rol !== 'admin') return;
+  currentMode = null;
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('modoSelectorView').classList.add('active');
+  document.getElementById('btnCambiarModo').style.display = 'none';
+  document.getElementById('headerUser').textContent = `${currentUser.nombre} · ${currentUser.rol}`;
+}
+
 function salir() {
   currentUser = null;
+  currentMode = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('modalCambioClave').classList.remove('active');
+  document.getElementById('btnCambiarModo').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('loginUser').value = '';
   document.getElementById('loginPass').value = '';
