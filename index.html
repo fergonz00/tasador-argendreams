@@ -1122,7 +1122,7 @@ function validarStep(step) {
       // - Si NO hay match → ya está, pasa
       // - Si hay match → tiene que confirmar (Es correcto / No coincide)
       // - Si confirmó "Es correcto" y hay 2+ versiones → tiene que elegir
-      // - Si confirmó "No coincide" → tiene que elegir marca + modelo manual + comentario
+      // - Si confirmó "No coincide" → solo el comentario es obligatorio
       const matchAuto = detectarEquivVigente(wizardData.usado_marca, wizardData.usado_modelo);
       if (matchAuto) {
         if (!wizardData.equiv_0km_confirmado) {
@@ -1134,10 +1134,8 @@ function validarStep(step) {
             return { ok: false, msg: 'Elegí la versión del 0km equivalente' };
           }
         } else {
-          // No coincide → elegir manual + comentario
-          if (!wizardData.equiv_0km_marca) return { ok: false, msg: 'Elegí la marca correcta' };
-          if (!wizardData.equiv_0km_modelo) return { ok: false, msg: 'Elegí el modelo correcto' };
-          if (!(wizardData.equiv_0km_comentario || '').trim()) return { ok: false, msg: 'Contanos qué no coincidía' };
+          // No coincide → solo el comentario
+          if (!(wizardData.equiv_0km_comentario || '').trim()) return { ok: false, msg: 'Contanos qué no coincide' };
         }
       }
       return { ok: true };
@@ -1275,7 +1273,7 @@ function renderStep5_Version() {
       <div class="wizard-step">
         ${_stepHeader(5, '⚙️ Versión')}
         <p class="step-help" style="color:var(--red)"><strong>No tenemos versiones cargadas en CCA para ${wizardData.usado_marca} ${wizardData.usado_modelo} ${wizardData.usado_anio}.</strong></p>
-        <p class="step-help">Volvé atrás y verificá la marca/modelo/año, o consultá con Agustín.</p>
+        <p class="step-help">Volvé atrás y verificá la marca/modelo/año, o consultá con el admin.</p>
       </div>
     `;
   }
@@ -1361,63 +1359,35 @@ function renderEquivVersionPicker(match) {
 }
 
 function renderEquivManualPicker() {
-  const marcas = getEquiv0kmMarcas();
-  const modelos = wizardData.equiv_0km_marca ? getEquiv0kmModelos(wizardData.equiv_0km_marca) : [];
-  const versiones = (wizardData.equiv_0km_marca && wizardData.equiv_0km_modelo)
-    ? getEquiv0kmVersiones(wizardData.equiv_0km_marca, wizardData.equiv_0km_modelo) : [];
-
   return `
     <div style="margin-top:14px; padding:14px; background:var(--grey-1); border-radius:10px;">
-      <label class="step-label">Marca correcta</label>
-      <select class="step-select" onchange="seleccionarEquivMarca(this.value)">
-        <option value="">— Elegí una marca —</option>
-        ${marcas.map(m => `<option value="${m}" ${wizardData.equiv_0km_marca === m ? 'selected' : ''}>${m}</option>`).join('')}
-      </select>
-
-      ${wizardData.equiv_0km_marca ? `
-        <label class="step-label" style="margin-top:14px;">Modelo correcto</label>
-        ${modelos.length === 0
-          ? `<p class="step-help" style="color:var(--red)">Sin modelos cargados para ${wizardData.equiv_0km_marca}.</p>`
-          : `<select class="step-select" onchange="seleccionarEquivModelo(this.value)">
-              <option value="">— Elegí un modelo —</option>
-              ${modelos.map(m => `<option value="${m}" ${wizardData.equiv_0km_modelo === m ? 'selected' : ''}>${m}</option>`).join('')}
-            </select>`}
-      ` : ''}
-
-      ${wizardData.equiv_0km_modelo && versiones.length > 0 ? `
-        <label class="step-label" style="margin-top:14px;">Versión</label>
-        <select class="step-select" onchange="seleccionarEquivVersion(this.value)">
-          <option value="">— Elegí una versión —</option>
-          ${versiones.map(v => `<option value="${v}" ${wizardData.equiv_0km_version === v ? 'selected' : ''}>${v}</option>`).join('')}
-        </select>
-      ` : ''}
-
-      <label class="step-label" style="margin-top:14px;">¿Qué no coincidía? (para que Agustín lo revise)</label>
+      <label class="step-label">Contanos qué no coincide</label>
       <textarea class="step-textarea"
         oninput="wizardData.equiv_0km_comentario = this.value"
-        placeholder="Ej. La sugerencia es Polo pero el cliente quiere el Virtus, son distintos."
+        placeholder="Ej. La sugerencia dice Polo pero el cliente trae un Virtus; son modelos distintos."
       >${wizardData.equiv_0km_comentario || ''}</textarea>
+      <p class="step-help" style="margin-top:8px;">Con tu nota, lo revisamos al moderar la tasación.</p>
     </div>
   `;
 }
 
 function confirmarEquiv(v) {
   wizardData.equiv_0km_confirmado = v;
-  wizardData.equiv_0km_existe = 'si';
   if (v === 'si') {
-    // Restaura marca/modelo del match auto-detectado
+    wizardData.equiv_0km_existe = 'si';
     const match = detectarEquivVigente(wizardData.usado_marca, wizardData.usado_modelo);
     if (match) {
       wizardData.equiv_0km_marca = match.marca;
       wizardData.equiv_0km_modelo = match.modelo;
-      // Si solo hay 1 versión, la seteo. Si hay varias, reset para que elija
       const versiones = getEquiv0kmVersiones(match.marca, match.modelo);
       if (versiones.length === 1) wizardData.equiv_0km_version = versiones[0];
       else wizardData.equiv_0km_version = null;
     }
     wizardData.equiv_0km_comentario = null;
   } else {
-    // Reset para que elija manual
+    // No coincide: limpiamos marca/modelo/version (no hay equivalente confirmado)
+    // El admin lo revisa por el comentario.
+    wizardData.equiv_0km_existe = 'no';
     wizardData.equiv_0km_marca = null;
     wizardData.equiv_0km_modelo = null;
     wizardData.equiv_0km_version = null;
@@ -1517,7 +1487,7 @@ function renderStep11_StockRapido() {
   return `
     <div class="wizard-step">
       ${_stepHeader(11, '📦 ¿Le ofreciste unidad de stock con entrega rápida?')}
-      <div class="step-help">Es importante para Agustín saber si el cliente prefiere entrega inmediata o está dispuesto a esperar.</div>
+      <div class="step-help">Es importante para el admin saber si el cliente prefiere entrega inmediata o está dispuesto a esperar.</div>
       <div class="option-pills">
         <button class="option-pill yes-no ${wizardData.stock_entrega_rapida === true ? 'active' : ''}"
           onclick="wizardData.stock_entrega_rapida = true; renderWizard();">✅ Sí</button>
