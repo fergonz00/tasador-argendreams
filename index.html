@@ -268,12 +268,11 @@ input, select, textarea { font-family: var(--font); }
 // ═════════════════════════════════════════════════════════════════
 
 // ─── CONFIG ──────────────────────────────────────────────────────
-// MISMO PROYECTO SUPABASE QUE TGA (tablas con prefijo argendreams_)
-const SUPABASE_URL  = 'https://wjfglsafgaltusmbnccl.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqZmdsc2FmZ2FsdHVzbWJuY2NsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0MzM2OTksImV4cCI6MjA4OTAwOTY5OX0.OOwgyKDNQsbBaGDaL0OhJfc8eOsCClvvAPW0VFBKrOA';
-// ⚠️ Esta anon key es la del proyecto Supabase de TGA. Se reutiliza porque
-// la Edge Function analyze-photos ya está deployada ahí. Las tablas nuevas
-// van con prefijo argendreams_* para no chocar con las de tga.
+// Proyecto Supabase propio (org ArgenDreams Free, plan $0/mes)
+const SUPABASE_URL  = 'https://xcijbomhvwwlzgmazvep.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_NPO73kz-5gDAYeiZnmZmcA_gNe6Y31M';
+// Formato nuevo de keys de Supabase (sb_publishable_ en lugar de eyJ...).
+// Es la equivalente de la "anon public key", apta para frontend.
 
 const SUPERADMINS_USUARIOS = ['fngonzalez'];
 
@@ -347,7 +346,7 @@ async function doLogin() {
   showLoading();
   try {
     const qs = `?usuario=eq.${encodeURIComponent(u)}&clave=eq.${encodeURIComponent(p)}&activo=eq.true&select=*`;
-    const rows = await sbGet('argendreams_usuarios', qs);
+    const rows = await sbGet('usuarios', qs);
 
     if (rows.length === 0) {
       showLoginError('Usuario o contraseña incorrectos (o usuario inactivo)');
@@ -430,7 +429,7 @@ async function confirmarCambioClave() {
 
   showLoading();
   try {
-    await sbPatch('argendreams_usuarios', `?id=eq.${currentUser.id}`, {
+    await sbPatch('usuarios', `?id=eq.${currentUser.id}`, {
       clave: c1,
       debe_cambiar_clave: false
     });

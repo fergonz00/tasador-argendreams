@@ -1,16 +1,16 @@
 -- ═══════════════════════════════════════════════════════════════════
 -- Tasador ArgenDreams — Schema inicial Supabase
--- Correr en el mismo proyecto Supabase de TGA (Dashboard → SQL Editor)
--- Prefijo argendreams_ para no chocar con las tablas de tga
+-- Proyecto: xcijbomhvwwlzgmazvep (org ArgenDreams Free)
+-- Correr en: Dashboard → SQL Editor → New query → Run
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ─────────────────────────────────────────────────────────────────
 -- USUARIOS
 -- ─────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS argendreams_usuarios (
+CREATE TABLE IF NOT EXISTS usuarios (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   usuario             TEXT UNIQUE NOT NULL,
-  clave               TEXT NOT NULL,              -- texto plano (deuda técnica heredada)
+  clave               TEXT NOT NULL,              -- texto plano (deuda técnica heredada de TGA)
   nombre              TEXT NOT NULL,
   rol                 TEXT NOT NULL CHECK (rol IN ('vendedor', 'admin', 'reventa')),
   activo              BOOLEAN NOT NULL DEFAULT true,
@@ -20,21 +20,21 @@ CREATE TABLE IF NOT EXISTS argendreams_usuarios (
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_argendreams_usuarios_usuario ON argendreams_usuarios(usuario);
-CREATE INDEX IF NOT EXISTS idx_argendreams_usuarios_rol_activo ON argendreams_usuarios(rol, activo);
+CREATE INDEX IF NOT EXISTS idx_usuarios_usuario    ON usuarios(usuario);
+CREATE INDEX IF NOT EXISTS idx_usuarios_rol_activo ON usuarios(rol, activo);
 
 -- Superadmin inicial (Fer). Cambiar la clave en el primer login.
-INSERT INTO argendreams_usuarios (usuario, clave, nombre, rol, debe_cambiar_clave)
+INSERT INTO usuarios (usuario, clave, nombre, rol, debe_cambiar_clave)
 VALUES ('fngonzalez', 'CambiarMe2026', 'Fer González', 'admin', true)
 ON CONFLICT (usuario) DO NOTHING;
 
 -- Admin Agustín (jefe de ventas). Pendiente: agregar teléfono cuando esté.
-INSERT INTO argendreams_usuarios (usuario, clave, nombre, rol, debe_cambiar_clave)
+INSERT INTO usuarios (usuario, clave, nombre, rol, debe_cambiar_clave)
 VALUES ('agustin', 'CambiarMe2026', 'Agustín (Jefe Ventas)', 'admin', true)
 ON CONFLICT (usuario) DO NOTHING;
 
 -- Usuarios de prueba para arrancar
-INSERT INTO argendreams_usuarios (usuario, clave, nombre, rol, debe_cambiar_clave) VALUES
+INSERT INTO usuarios (usuario, clave, nombre, rol, debe_cambiar_clave) VALUES
   ('vendedor_test',  'CambiarMe2026', 'Vendedor de prueba',  'vendedor', true),
   ('reventa_test_1', 'CambiarMe2026', 'Reventa de prueba 1', 'reventa',  true),
   ('reventa_test_2', 'CambiarMe2026', 'Reventa de prueba 2', 'reventa',  true)
@@ -44,9 +44,9 @@ ON CONFLICT (usuario) DO NOTHING;
 -- ─────────────────────────────────────────────────────────────────
 -- TASACIONES
 -- ─────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS argendreams_tasaciones (
+CREATE TABLE IF NOT EXISTS tasaciones (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vendedor_id             UUID NOT NULL REFERENCES argendreams_usuarios(id),
+  vendedor_id             UUID NOT NULL REFERENCES usuarios(id),
 
   -- Cliente
   cliente_nombre          TEXT NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS argendreams_tasaciones (
   precio_final_admin      NUMERIC,                       -- el precio que Agustín envía al vendedor
   ronda_actual            INT NOT NULL DEFAULT 1,        -- incrementa al "reenviar para mejorar"
 
-  -- Análisis IA (reusa edge function de TGA)
+  -- Análisis IA (Edge Function analyze-photos a deployar después)
   analisis_ia_resumen     TEXT,
   analisis_ia_detalle     JSONB,
   analisis_ia_descuento   NUMERIC,
@@ -101,12 +101,12 @@ CREATE TABLE IF NOT EXISTS argendreams_tasaciones (
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_argendreams_tasaciones_vendedor ON argendreams_tasaciones(vendedor_id);
-CREATE INDEX IF NOT EXISTS idx_argendreams_tasaciones_estado   ON argendreams_tasaciones(estado);
-CREATE INDEX IF NOT EXISTS idx_argendreams_tasaciones_created  ON argendreams_tasaciones(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasaciones_vendedor ON tasaciones(vendedor_id);
+CREATE INDEX IF NOT EXISTS idx_tasaciones_estado   ON tasaciones(estado);
+CREATE INDEX IF NOT EXISTS idx_tasaciones_created  ON tasaciones(created_at DESC);
 
 -- Trigger para updated_at automático
-CREATE OR REPLACE FUNCTION argendreams_set_updated_at()
+CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = now();
@@ -114,19 +114,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_argendreams_tasaciones_updated ON argendreams_tasaciones;
-CREATE TRIGGER trg_argendreams_tasaciones_updated
-  BEFORE UPDATE ON argendreams_tasaciones
-  FOR EACH ROW EXECUTE FUNCTION argendreams_set_updated_at();
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_tasaciones_updated') THEN
+    CREATE TRIGGER trg_tasaciones_updated
+      BEFORE UPDATE ON tasaciones
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  END IF;
+END $$;
 
 
 -- ─────────────────────────────────────────────────────────────────
 -- PRECIOS DE REVENTAS (histórico completo, una fila por reventa × ronda)
 -- ─────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS argendreams_reventas_precios (
+CREATE TABLE IF NOT EXISTS reventas_precios (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tasacion_id  UUID NOT NULL REFERENCES argendreams_tasaciones(id) ON DELETE CASCADE,
-  reventa_id   UUID NOT NULL REFERENCES argendreams_usuarios(id),
+  tasacion_id  UUID NOT NULL REFERENCES tasaciones(id) ON DELETE CASCADE,
+  reventa_id   UUID NOT NULL REFERENCES usuarios(id),
   ronda        INT  NOT NULL DEFAULT 1,
   precio       NUMERIC NOT NULL,
   comentario   TEXT,
@@ -134,57 +138,57 @@ CREATE TABLE IF NOT EXISTS argendreams_reventas_precios (
   UNIQUE (tasacion_id, reventa_id, ronda)
 );
 
-CREATE INDEX IF NOT EXISTS idx_argendreams_reventas_tasacion ON argendreams_reventas_precios(tasacion_id);
-CREATE INDEX IF NOT EXISTS idx_argendreams_reventas_reventa  ON argendreams_reventas_precios(reventa_id);
+CREATE INDEX IF NOT EXISTS idx_reventas_precios_tasacion ON reventas_precios(tasacion_id);
+CREATE INDEX IF NOT EXISTS idx_reventas_precios_reventa  ON reventas_precios(reventa_id);
 
 
 -- ─────────────────────────────────────────────────────────────────
 -- COMENTARIOS DEL ADMIN (rebotes)
 -- Cuando el admin rebota una tasación, deja notas + campos a corregir
 -- ─────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS argendreams_comentarios_admin (
+CREATE TABLE IF NOT EXISTS comentarios_admin (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tasacion_id         UUID NOT NULL REFERENCES argendreams_tasaciones(id) ON DELETE CASCADE,
-  admin_id            UUID NOT NULL REFERENCES argendreams_usuarios(id),
+  tasacion_id         UUID NOT NULL REFERENCES tasaciones(id) ON DELETE CASCADE,
+  admin_id            UUID NOT NULL REFERENCES usuarios(id),
   comentario          TEXT,
   campos_a_corregir   TEXT[],                    -- ej: ['usado_km', 'usado_color', 'fotos']
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_argendreams_comentarios_tasacion ON argendreams_comentarios_admin(tasacion_id);
+CREATE INDEX IF NOT EXISTS idx_comentarios_admin_tasacion ON comentarios_admin(tasacion_id);
 
 
 -- ─────────────────────────────────────────────────────────────────
--- COMENTARIOS DEL ADMIN PARA REVENTAS
+-- COMENTARIOS PARA REVENTAS
 -- Mensajes que aparecen junto a la tasación cuando los reventas la ven
 -- ─────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS argendreams_comentarios_reventa (
+CREATE TABLE IF NOT EXISTS comentarios_reventa (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tasacion_id  UUID NOT NULL REFERENCES argendreams_tasaciones(id) ON DELETE CASCADE,
-  admin_id     UUID NOT NULL REFERENCES argendreams_usuarios(id),
+  tasacion_id  UUID NOT NULL REFERENCES tasaciones(id) ON DELETE CASCADE,
+  admin_id     UUID NOT NULL REFERENCES usuarios(id),
   comentario   TEXT NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_argendreams_coment_reventa_tasacion ON argendreams_comentarios_reventa(tasacion_id);
+CREATE INDEX IF NOT EXISTS idx_comentarios_reventa_tasacion ON comentarios_reventa(tasacion_id);
 
 
 -- ─────────────────────────────────────────────────────────────────
 -- NOTIFICACIONES WHATSAPP (preparado para más adelante)
--- Mismo esquema que tasador-tga, prefijado
+-- Mismo esquema que tasador-tga
 -- ─────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS argendreams_notificaciones_config (
+CREATE TABLE IF NOT EXISTS notificaciones_config (
   evento                       TEXT PRIMARY KEY,
   usuarios_ids                 UUID[] NOT NULL DEFAULT '{}',
   incluir_vendedor_referencia  BOOLEAN NOT NULL DEFAULT false,
   updated_at                   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_by                   UUID REFERENCES argendreams_usuarios(id)
+  updated_by                   UUID REFERENCES usuarios(id)
 );
 
-CREATE TABLE IF NOT EXISTS argendreams_notificaciones_log (
+CREATE TABLE IF NOT EXISTS notificaciones_log (
   id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tasacion_id              UUID REFERENCES argendreams_tasaciones(id),
-  destinatario_id          UUID REFERENCES argendreams_usuarios(id),
+  tasacion_id              UUID REFERENCES tasaciones(id),
+  destinatario_id          UUID REFERENCES usuarios(id),
   destinatario_telefono    TEXT,
   template                 TEXT,
   evento                   TEXT,
@@ -195,10 +199,10 @@ CREATE TABLE IF NOT EXISTS argendreams_notificaciones_log (
   created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_argendreams_notif_log_tasacion ON argendreams_notificaciones_log(tasacion_id);
+CREATE INDEX IF NOT EXISTS idx_notif_log_tasacion ON notificaciones_log(tasacion_id);
 
 -- Inicializar config de los 6 eventos con superadmin como destinatario fijo
-INSERT INTO argendreams_notificaciones_config (evento, usuarios_ids, incluir_vendedor_referencia)
+INSERT INTO notificaciones_config (evento, usuarios_ids, incluir_vendedor_referencia)
 SELECT e.evento, ARRAY[u.id]::UUID[], e.incl
 FROM (VALUES
   ('tasacion_pendiente_carga',  false),
@@ -208,17 +212,11 @@ FROM (VALUES
   ('precio_al_vendedor',        true),    -- al vendedor de la tasación
   ('tasacion_cerrada',          true)
 ) AS e(evento, incl)
-CROSS JOIN (SELECT id FROM argendreams_usuarios WHERE usuario='fngonzalez') AS u
+CROSS JOIN (SELECT id FROM usuarios WHERE usuario='fngonzalez') AS u
 ON CONFLICT (evento) DO NOTHING;
 
 
--- ─────────────────────────────────────────────────────────────────
--- STORAGE BUCKET para fotos
--- (correr aparte en Storage si no existe — desde el Dashboard:
---  Storage → New bucket → name=argendreams-fotos, public=true)
--- ─────────────────────────────────────────────────────────────────
-
-
 -- ═══════════════════════════════════════════════════════════════════
--- FIN
+-- FIN — Recordá crear el Storage bucket "argendreams-fotos" (public)
+-- desde el Dashboard: Storage → New bucket
 -- ═══════════════════════════════════════════════════════════════════

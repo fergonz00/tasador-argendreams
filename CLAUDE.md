@@ -10,9 +10,12 @@ App web de tasación de autos usados para **ArgenDreams**, concesionaria nueva q
 
 - HTML único (`index.html`) sin build, sin framework, sin bundler
 - CSS y JS vanilla, todo inline
-- **Supabase** (REST API directa con fetch). **Mismo proyecto que tasador-tga**, tablas con prefijo `argendreams_*` para no chocar
+- **Supabase** (REST API directa con fetch). **Proyecto propio dedicado** (org ArgenDreams Free).
+  - Project ref: `xcijbomhvwwlzgmazvep`
+  - URL: `https://xcijbomhvwwlzgmazvep.supabase.co`
+  - Publishable key (formato nuevo `sb_publishable_...`) hardcodeada en `index.html`
 - Hosting: GitHub Pages con dominio propio vía CNAME (a definir, posible `tasador.argendreams.com.ar`)
-- Análisis IA de fotos: reusa la Edge Function `analyze-photos` de tga (Claude Opus). Anthropic API key vive como secret en Supabase
+- Análisis IA de fotos: Edge Function `analyze-photos` a copiar desde tasador-tga y deployar en este proyecto. Anthropic API key se carga como secret nuevo
 - Notificaciones WhatsApp: nueva línea + nuevas plantillas Meta a configurar por Fer. Edge function se deja preparada pero sin disparar hasta que la línea esté lista
 
 ## Roles
@@ -129,7 +132,7 @@ Fer va a crear esta sheet manualmente con los precios de lista de referencia. La
 
 ## Schema Supabase
 
-### `argendreams_usuarios`
+### `usuarios`
 | Campo | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
@@ -143,7 +146,7 @@ Fer va a crear esta sheet manualmente con los precios de lista de referencia. La
 | notificaciones_wa | boolean | opt-out, default true |
 | created_at | timestamptz | default now() |
 
-### `argendreams_tasaciones`
+### `tasaciones`
 | Campo | Tipo | Notas |
 |---|---|---|
 | id | uuid PK | |
@@ -178,7 +181,7 @@ Fer va a crear esta sheet manualmente con los precios de lista de referencia. La
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
 
-### `argendreams_reventas_precios`
+### `reventas_precios`
 Histórico completo (cada reenvío genera ronda nueva).
 
 | Campo | Tipo | Notas |
@@ -193,7 +196,7 @@ Histórico completo (cada reenvío genera ronda nueva).
 
 UNIQUE (tasacion_id, reventa_id, ronda)
 
-### `argendreams_comentarios_admin`
+### `comentarios_admin`
 Notas del admin cuando rebota una tasación, para que el vendedor sepa qué corregir.
 
 | Campo | Tipo | Notas |
@@ -224,7 +227,7 @@ Cada evento se dispara con `notifyWA(tasacion_id, evento)` desde el frontend, fi
 3. ⏳ Implementar wizard del vendedor (12 pasos)
 4. ⏳ Implementar vista admin con ranking + descuento configurable
 5. ⏳ Implementar vista reventa (mínima, sin info interna)
-6. ⏳ Sistema de rebotes con `argendreams_comentarios_admin`
+6. ⏳ Sistema de rebotes con `comentarios_admin`
 7. ⏳ Reutilizar gestión de usuarios de TGA
 8. ⏳ Sheet BYD precios (Fer crea, código lee)
 9. ⏳ Dominio + GitHub Pages + CNAME
@@ -233,7 +236,7 @@ Cada evento se dispara con `notifyWA(tasacion_id, evento)` desde el frontend, fi
 
 ## Decisiones de la primera sesión (26-may-2026)
 
-- Supabase: reusar el proyecto de TGA con prefijo `argendreams_*` (más simple, evita configurar nueva Edge Function de IA fotos)
+- Supabase: reusar el proyecto de TGA con prefijo `*` (más simple, evita configurar nueva Edge Function de IA fotos)
 - Sheet BYD: nueva, manual, con precios de lista oficiales (distinta a la del scraper que ya existe)
 - Color del usado: lo carga el vendedor (lo necesita el reventa)
 - Usuarios reales: se cargan después de tener la plataforma funcional con usuarios de prueba

@@ -7,6 +7,10 @@ node_modules/
 # Secretos / config local
 .env
 .env.local
+*contraseña*
+*password*
+*secret*
+*credentials*
 
 # Build / temp
 dist/
