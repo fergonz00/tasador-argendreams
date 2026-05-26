@@ -843,18 +843,28 @@ async function loadPrecios0km() {
     const res = await fetch(PRECIOS_0KM_CSV_URL);
     if (!res.ok) throw new Error('Precios 0km HTTP ' + res.status);
     const text = await res.text();
-    const rows = parseCSV(text);
-    // El CSV de 0km a veces tiene una primera fila basura vacía — la filtramos
-    precios0kmData = rows
-      .filter(r => (r.Marca || r.marca) && (r.Modelo || r.modelo))
-      .map(r => ({
-        marca: (r.Marca || r.marca || '').trim().toUpperCase(),
-        modelo: (r.Modelo || r.modelo || '').trim(),
-        version: (r['Versión'] || r.version || r['Version'] || '').trim(),
-        precio: parseFloat((r.Precio || r.precio || '0').toString().replace(/[\$,.]/g, '')) || 0,
-        moneda: (r.Moneda || r.moneda || 'ARS').trim().toUpperCase()
-      }));
+    // El CSV NO tiene headers — primera fila son comas vacías + datos directos
+    // Orden de columnas: Marca, Modelo, Versión, Precio, Moneda, Actualizado
+    const lines = text.split('\n');
+    precios0kmData = [];
+    for (const line of lines) {
+      const cells = parseCSVLine(line);
+      if (cells.length < 5) continue;
+      const marca = (cells[0] || '').trim().replace(/"/g, '');
+      const modelo = (cells[1] || '').trim().replace(/"/g, '');
+      if (!marca || !modelo) continue;  // skipea líneas vacías
+      precios0kmData.push({
+        marca: marca.toUpperCase(),
+        modelo: modelo,
+        version: (cells[2] || '').trim().replace(/"/g, ''),
+        precio: parseFloat((cells[3] || '0').toString().replace(/[\$,]/g, '').replace(/"/g, '')) || 0,
+        moneda: ((cells[4] || 'ARS').trim().replace(/"/g, '') || 'ARS').toUpperCase()
+      });
+    }
     console.log('Precios 0km cargados:', precios0kmData.length, 'registros');
+    if (precios0kmData.length > 0) {
+      console.log('Marcas 0km disponibles:', [...new Set(precios0kmData.map(r => r.marca))].sort().join(', '));
+    }
   } catch (e) {
     console.warn('No se pudieron cargar precios 0km:', e);
     // No bloquea — el paso "0km equivalente" sigue siendo opcional
