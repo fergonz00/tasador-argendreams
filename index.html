@@ -658,7 +658,7 @@ async function continuarLogin() {
     // Los admins eligen entre Modo Admin o Modo Vendedor
     document.getElementById('modoSelectorView').classList.add('active');
     // Pre-cargo CCA en background por si elige vendedor (no bloquea la elección)
-    loadCCA().catch(e => console.error('CCA load fail:', e));
+    Promise.all([loadCCA(), loadPrecios0km()]).catch(e => console.error('Data load fail:', e));
   } else if (currentUser.rol === 'reventa') {
     document.getElementById('reventaView').classList.add('active');
   } else {
@@ -666,10 +666,10 @@ async function continuarLogin() {
     document.getElementById('vendedorView').classList.add('active');
     showLoading('Cargando datos...');
     try {
-      await loadCCA();
+      await Promise.all([loadCCA(), loadPrecios0km()]);
     } catch (e) {
-      console.error('CCA load fail:', e);
-      showToast('No se pudieron cargar los precios de referencia', 'error');
+      console.error('Data load fail:', e);
+      showToast('No se pudieron cargar todos los datos de referencia', 'error');
     } finally {
       hideLoading();
     }
@@ -772,6 +772,10 @@ async function confirmarCambioClave() {
 // Reusamos la sheet CCA de TGA (mismas marcas/modelos de usados)
 const CCA_CSV_URL = 'https://docs.google.com/spreadsheets/d/1MJWeHCTbxdqBJwifzgNbHssLLsxAwaSkb66Zc9yv3ko/gviz/tq?tqx=out:csv&gid=904791552';
 
+// Sheet de 0km (scraping de elcerokm, alimenta TGA) — 8 marcas + BYD en USD.
+// Columnas: Marca, Modelo, Versión, Precio, Moneda (ARS|USD), Actualizado
+const PRECIOS_0KM_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH_9OtgijB7xV7qZEHoogNXq8TE5gLxz4RNb2DvxbbQ1o2A_Be2my532IJF0nxpJCUkghJrEa3TeDw/pub?gid=647749443&single=true&output=csv';
+
 // TODO: reemplazar por sheet propia cuando Fer la cree
 //       (ver supabase/sheet-byd-template.md)
 const BYD_MODELOS_HARDCODED = [
@@ -791,6 +795,7 @@ const PROVINCIAS_AR = [
 ];
 
 let ccaData = [];
+let precios0kmData = [];
 
 // ─── CSV PARSER ──────────────────────────────────────────────────
 function parseCSV(text) {
@@ -831,6 +836,57 @@ async function loadCCA() {
   const text = await res.text();
   ccaData = parseCSV(text);
   console.log('CCA cargado:', ccaData.length, 'registros');
+}
+
+async function loadPrecios0km() {
+  try {
+    const res = await fetch(PRECIOS_0KM_CSV_URL);
+    if (!res.ok) throw new Error('Precios 0km HTTP ' + res.status);
+    const text = await res.text();
+    const rows = parseCSV(text);
+    // El CSV de 0km a veces tiene una primera fila basura vacía — la filtramos
+    precios0kmData = rows
+      .filter(r => (r.Marca || r.marca) && (r.Modelo || r.modelo))
+      .map(r => ({
+        marca: (r.Marca || r.marca || '').trim().toUpperCase(),
+        modelo: (r.Modelo || r.modelo || '').trim(),
+        version: (r['Versión'] || r.version || r['Version'] || '').trim(),
+        precio: parseFloat((r.Precio || r.precio || '0').toString().replace(/[\$,.]/g, '')) || 0,
+        moneda: (r.Moneda || r.moneda || 'ARS').trim().toUpperCase()
+      }));
+    console.log('Precios 0km cargados:', precios0kmData.length, 'registros');
+  } catch (e) {
+    console.warn('No se pudieron cargar precios 0km:', e);
+    // No bloquea — el paso "0km equivalente" sigue siendo opcional
+  }
+}
+
+// Helpers de precios0kmData (para el paso 6: 0km equivalente del usado)
+function getEquiv0kmMarcas() {
+  const set = new Set();
+  precios0kmData.forEach(r => { if (r.marca) set.add(r.marca); });
+  return [...set].sort();
+}
+function getEquiv0kmModelos(marca) {
+  const m = (marca || '').toUpperCase().trim();
+  const set = new Set();
+  precios0kmData.forEach(r => { if (r.marca === m && r.modelo) set.add(r.modelo); });
+  return [...set].sort();
+}
+function getEquiv0kmVersiones(marca, modelo) {
+  const m = (marca || '').toUpperCase().trim();
+  const mod = (modelo || '').trim();
+  const set = new Set();
+  precios0kmData.forEach(r => {
+    if (r.marca === m && r.modelo === mod && r.version) set.add(r.version);
+  });
+  return [...set].sort();
+}
+function getEquiv0kmRow(marca, modelo, version) {
+  const m = (marca || '').toUpperCase().trim();
+  return precios0kmData.find(r =>
+    r.marca === m && r.modelo === modelo && r.version === version
+  ) || null;
 }
 
 // Helpers para sacar marcas/modelos/versiones/años del CCA
@@ -988,10 +1044,13 @@ function validarStep(step) {
       if (!wizardData.usado_version) return { ok: false, msg: 'Elegí una versión' };
       return { ok: true };
     case 5:
-      // 0km equivalente: hay que elegir Sí o No (no dejamos pasar sin elegir)
-      if (!wizardData.equiv_0km_existe) return { ok: false, msg: 'Indicá si hay un 0km equivalente' };
-      if (wizardData.equiv_0km_existe === 'si' && !(wizardData.equiv_0km_modelo || '').trim())
-        return { ok: false, msg: 'Ingresá el modelo 0km equivalente' };
+      // 0km equivalente: hay que elegir Sí (vigente) o No (descontinuado)
+      if (!wizardData.equiv_0km_existe) return { ok: false, msg: 'Indicá si el modelo sigue vigente o no' };
+      if (wizardData.equiv_0km_existe === 'si') {
+        if (!wizardData.equiv_0km_marca) return { ok: false, msg: 'Elegí la marca del 0km equivalente' };
+        if (!wizardData.equiv_0km_modelo) return { ok: false, msg: 'Elegí el modelo 0km equivalente' };
+        // Versión opcional (algunos modelos no tienen sub-versiones en el scraping)
+      }
       return { ok: true };
     case 6:
       if (!wizardData.usado_km || wizardData.usado_km <= 0) return { ok: false, msg: 'Ingresá los kilómetros' };
@@ -1147,28 +1206,47 @@ function seleccionarVersion(v) {
 }
 
 function renderStep6_Equiv0km() {
-  const marcaUsado = (wizardData.usado_marca || '').toUpperCase();
+  const marcas = getEquiv0kmMarcas();
+  const modelos = wizardData.equiv_0km_marca ? getEquiv0kmModelos(wizardData.equiv_0km_marca) : [];
+  const versiones = (wizardData.equiv_0km_marca && wizardData.equiv_0km_modelo)
+    ? getEquiv0kmVersiones(wizardData.equiv_0km_marca, wizardData.equiv_0km_modelo) : [];
+
   return `
     <div class="wizard-step">
-      ${_stepHeader(6, '🆕 ¿Existe un 0km equivalente del mismo modelo?')}
-      <div class="step-help">Opcional. Solo si <strong>${marcaUsado}</strong> sigue fabricando un modelo equivalente nuevo hoy. Es información referencial para el análisis. <strong>No vas a ver precios.</strong></div>
-      <div class="option-pills">
+      ${_stepHeader(6, '🆕 ¿Hay un 0km equivalente vigente?', 'Opcional. <strong>Solo aplica si el modelo del usado se sigue fabricando hoy en día.</strong> Si es un modelo descontinuado, dejá vacío y seguí. Esta info es referencial para que el admin compare contra el precio actual de mercado. Vos no vas a ver precios.')}
+
+      <div class="option-pills" style="margin-bottom:14px">
         <button class="option-pill ${wizardData.equiv_0km_existe === 'no' ? 'active' : ''}"
-          onclick="setEquivOption('no')">— No aplica / no sé —</button>
+          onclick="setEquivOption('no')">— No aplica / descontinuado —</button>
         <button class="option-pill ${wizardData.equiv_0km_existe === 'si' ? 'active' : ''}"
-          onclick="setEquivOption('si')">Sí, hay equivalente</button>
+          onclick="setEquivOption('si')">Sí, sigue vigente</button>
       </div>
+
       ${wizardData.equiv_0km_existe === 'si' ? `
-        <label class="step-label" style="margin-top:14px">Modelo 0km equivalente</label>
-        <input type="text" class="step-input"
-          oninput="wizardData.equiv_0km_modelo = this.value"
-          value="${wizardData.equiv_0km_modelo || ''}"
-          placeholder="Ej. ${marcaUsado} ${wizardData.usado_modelo || '...'} versión actual">
-        <label class="step-label">Versión 0km equivalente (opcional)</label>
-        <input type="text" class="step-input"
-          oninput="wizardData.equiv_0km_version = this.value"
-          value="${wizardData.equiv_0km_version || ''}"
-          placeholder="Versión actual">
+        <label class="step-label">Marca del 0km equivalente</label>
+        <select class="step-select" onchange="seleccionarEquivMarca(this.value)">
+          <option value="">— Elegí una marca —</option>
+          ${marcas.map(m => `<option value="${m}" ${wizardData.equiv_0km_marca === m ? 'selected' : ''}>${m}</option>`).join('')}
+        </select>
+
+        ${wizardData.equiv_0km_marca ? `
+          <label class="step-label" style="margin-top:14px">Modelo 0km</label>
+          ${modelos.length === 0
+            ? `<p class="step-help" style="color:var(--red)">No tenemos modelos cargados para ${wizardData.equiv_0km_marca} en el scraping.</p>`
+            : `<select class="step-select" onchange="seleccionarEquivModelo(this.value)">
+                <option value="">— Elegí un modelo —</option>
+                ${modelos.map(m => `<option value="${m}" ${wizardData.equiv_0km_modelo === m ? 'selected' : ''}>${m}</option>`).join('')}
+              </select>`
+          }
+        ` : ''}
+
+        ${wizardData.equiv_0km_modelo && versiones.length > 0 ? `
+          <label class="step-label" style="margin-top:14px">Versión 0km</label>
+          <select class="step-select" onchange="seleccionarEquivVersion(this.value)">
+            <option value="">— Elegí una versión —</option>
+            ${versiones.map(v => `<option value="${v}" ${wizardData.equiv_0km_version === v ? 'selected' : ''}>${v}</option>`).join('')}
+          </select>
+        ` : ''}
       ` : ''}
     </div>
   `;
@@ -1176,12 +1254,25 @@ function renderStep6_Equiv0km() {
 function setEquivOption(v) {
   wizardData.equiv_0km_existe = v;
   if (v === 'no') {
+    wizardData.equiv_0km_marca = null;
     wizardData.equiv_0km_modelo = null;
     wizardData.equiv_0km_version = null;
-  } else {
-    wizardData.equiv_0km_marca = (wizardData.usado_marca || '').toUpperCase();
   }
   renderWizard();
+}
+function seleccionarEquivMarca(m) {
+  wizardData.equiv_0km_marca = m || null;
+  wizardData.equiv_0km_modelo = null;
+  wizardData.equiv_0km_version = null;
+  renderWizard();
+}
+function seleccionarEquivModelo(m) {
+  wizardData.equiv_0km_modelo = m || null;
+  wizardData.equiv_0km_version = null;
+  renderWizard();
+}
+function seleccionarEquivVersion(v) {
+  wizardData.equiv_0km_version = v || null;
 }
 
 function renderStep7_Km() {
@@ -1345,6 +1436,8 @@ async function submitTasacion() {
       equiv_0km_marca: wizardData.equiv_0km_existe === 'si' ? wizardData.equiv_0km_marca : null,
       equiv_0km_modelo: wizardData.equiv_0km_existe === 'si' ? wizardData.equiv_0km_modelo : null,
       equiv_0km_version: wizardData.equiv_0km_existe === 'si' ? wizardData.equiv_0km_version : null,
+      equiv_0km_precio: null,   // se setea abajo si encontramos el row
+      equiv_0km_moneda: null,
       byd_modelo: wizardData.byd_modelo,
       byd_version: wizardData.byd_version,
       precio_ofrecido_cliente: wizardData.precio_ofrecido_cliente,
@@ -1352,6 +1445,15 @@ async function submitTasacion() {
       fotos: fotoUrls,
       estado: 'pendiente_admin'
     };
+
+    // Snapshot del precio + moneda del 0km equivalente (si aplica)
+    if (record.equiv_0km_marca && record.equiv_0km_modelo) {
+      const eqRow = getEquiv0kmRow(record.equiv_0km_marca, record.equiv_0km_modelo, record.equiv_0km_version);
+      if (eqRow) {
+        record.equiv_0km_precio = eqRow.precio;
+        record.equiv_0km_moneda = eqRow.moneda;
+      }
+    }
 
     if (editingTasacionId) {
       // Update: solo los campos editables (no tocar id, vendedor_id, created_at)
