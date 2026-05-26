@@ -848,14 +848,21 @@ function getCCAModelos(marca) {
   });
   return [...set].sort();
 }
-function getCCAVersiones(marca, modelo) {
+function getCCAVersiones(marca, modelo, anio) {
   const m = marca.toUpperCase().trim();
   const mod = modelo.trim();
+  const yearKey = anio ? String(anio) : null;
   const set = new Set();
   ccaData.forEach(r => {
-    if ((r.marca || '').trim().toUpperCase() === m
-      && (r.modelo || '').trim() === mod
-      && r.version) set.add(r.version.trim());
+    if ((r.marca || '').trim().toUpperCase() !== m) return;
+    if ((r.modelo || '').trim() !== mod) return;
+    if (!r.version) return;
+    // Si pasamos año, solo incluir versiones que tienen precio en esa columna
+    if (yearKey) {
+      const valor = r[yearKey];
+      if (!valor || !valor.toString().trim()) return;
+    }
+    set.add(r.version.trim());
   });
   return [...set].sort();
 }
@@ -1043,12 +1050,18 @@ function renderStep3_Anio() {
   return `
     <div class="wizard-step">
       ${_stepHeader(3, '📅 Año del vehículo')}
-      <div class="option-pills">
-        ${anios.map(y => `<button class="option-pill ${wizardData.usado_anio === y ? 'active' : ''}"
-          onclick="wizardData.usado_anio = ${y}; renderWizard();">${y}</button>`).join('')}
-      </div>
+      <label class="step-label">Elegí el año</label>
+      <select class="step-select" onchange="seleccionarAnio(this.value)">
+        <option value="">— Elegí un año —</option>
+        ${anios.map(y => `<option value="${y}" ${wizardData.usado_anio === y ? 'selected' : ''}>${y}</option>`).join('')}
+      </select>
     </div>
   `;
+}
+function seleccionarAnio(v) {
+  wizardData.usado_anio = v ? parseInt(v) : null;
+  // si el año cambia, podría haber distinta lista de versiones disponibles
+  wizardData.usado_version = null;
 }
 
 function renderStep4_Modelo() {
@@ -1085,7 +1098,8 @@ function renderStep5_Version() {
   if (!wizardData.usado_marca || !wizardData.usado_modelo) {
     return `<div class="wizard-step"><p>Volvé y completá marca + modelo primero.</p></div>`;
   }
-  const versiones = getCCAVersiones(wizardData.usado_marca, wizardData.usado_modelo);
+  // Filtramos por año para mostrar solo versiones que existían en ese año
+  const versiones = getCCAVersiones(wizardData.usado_marca, wizardData.usado_modelo, wizardData.usado_anio);
   if (versiones.length === 0) {
     return `
       <div class="wizard-step">
@@ -1190,27 +1204,29 @@ function renderStep8_ColorProvincia() {
 }
 
 function renderStep9_BYD() {
+  const versionesBYD = wizardData.byd_modelo
+    ? (BYD_MODELOS_HARDCODED.find(m => m.modelo === wizardData.byd_modelo)?.versiones || [])
+    : [];
   return `
     <div class="wizard-step">
       ${_stepHeader(9, '⚡ 0km BYD que consulta el cliente')}
       <label class="step-label">Modelo BYD</label>
-      <div class="option-pills">
-        ${BYD_MODELOS_HARDCODED.map(m => `<button class="option-pill ${wizardData.byd_modelo === m.modelo ? 'active' : ''}"
-          onclick="seleccionarBYD('${m.modelo}')">${m.modelo}</button>`).join('')}
-      </div>
-      ${wizardData.byd_modelo ? `
-        <label class="step-label" style="margin-top:8px">Versión</label>
-        <div class="option-pills">
-          ${(BYD_MODELOS_HARDCODED.find(m => m.modelo === wizardData.byd_modelo)?.versiones || []).map(v =>
-            `<button class="option-pill ${wizardData.byd_version === v ? 'active' : ''}"
-              onclick="wizardData.byd_version = '${v}'; renderWizard();">${v}</button>`
-          ).join('')}
-        </div>
+      <select class="step-select" onchange="seleccionarBYD(this.value)">
+        <option value="">— Elegí un modelo —</option>
+        ${BYD_MODELOS_HARDCODED.map(m => `<option value="${m.modelo}" ${wizardData.byd_modelo === m.modelo ? 'selected' : ''}>${m.modelo}</option>`).join('')}
+      </select>
+      ${wizardData.byd_modelo && versionesBYD.length > 0 ? `
+        <label class="step-label" style="margin-top:14px">Versión</label>
+        <select class="step-select" onchange="wizardData.byd_version = this.value || null;">
+          <option value="">— Elegí una versión —</option>
+          ${versionesBYD.map(v => `<option value="${v}" ${wizardData.byd_version === v ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
       ` : ''}
     </div>
   `;
 }
 function seleccionarBYD(modelo) {
+  if (!modelo) { wizardData.byd_modelo = null; wizardData.byd_version = null; renderWizard(); return; }
   wizardData.byd_modelo = modelo;
   wizardData.byd_version = null;
   renderWizard();
