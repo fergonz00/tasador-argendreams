@@ -789,16 +789,17 @@ async function loadCCA() {
 }
 
 // Helpers para sacar marcas/modelos/versiones del CCA
+// Los headers del CSV son lowercase: marca, modelo, version
 function getCCAMarcas() {
   const set = new Set();
-  ccaData.forEach(r => { if (r['Marca']) set.add(r['Marca'].trim().toUpperCase()); });
+  ccaData.forEach(r => { if (r.marca) set.add(r.marca.trim().toUpperCase()); });
   return [...set].sort();
 }
 function getCCAModelos(marca) {
   const m = marca.toUpperCase().trim();
   const set = new Set();
   ccaData.forEach(r => {
-    if ((r['Marca'] || '').trim().toUpperCase() === m && r['Modelo']) set.add(r['Modelo'].trim());
+    if ((r.marca || '').trim().toUpperCase() === m && r.modelo) set.add(r.modelo.trim());
   });
   return [...set].sort();
 }
@@ -807,9 +808,9 @@ function getCCAVersiones(marca, modelo) {
   const mod = modelo.trim();
   const set = new Set();
   ccaData.forEach(r => {
-    if ((r['Marca'] || '').trim().toUpperCase() === m
-      && (r['Modelo'] || '').trim() === mod
-      && r['Versión']) set.add(r['Versión'].trim());
+    if ((r.marca || '').trim().toUpperCase() === m
+      && (r.modelo || '').trim() === mod
+      && r.version) set.add(r.version.trim());
   });
   return [...set].sort();
 }
