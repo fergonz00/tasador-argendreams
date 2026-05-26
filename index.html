@@ -833,8 +833,17 @@ async function loadCCA() {
   console.log('CCA cargado:', ccaData.length, 'registros');
 }
 
-// Helpers para sacar marcas/modelos/versiones del CCA
-// Los headers del CSV son lowercase: marca, modelo, version
+// Helpers para sacar marcas/modelos/versiones/años del CCA
+// Los headers del CSV son lowercase: marca, modelo, version, "", 2025, 2024, ...
+function getCCAAnios() {
+  if (ccaData.length === 0) return [];
+  // Las claves que son números 4 dígitos son años
+  return Object.keys(ccaData[0])
+    .filter(k => /^\d{4}$/.test(k))
+    .map(k => parseInt(k))
+    .sort((a, b) => b - a);  // descendente: 2025, 2024, ..., 2012
+}
+
 function getCCAMarcas() {
   const set = new Set();
   ccaData.forEach(r => { if (r.marca) set.add(r.marca.trim().toUpperCase()); });
@@ -1044,9 +1053,7 @@ function seleccionarMarca(m) {
 }
 
 function renderStep3_Anio() {
-  const actual = new Date().getFullYear();
-  const anios = [];
-  for (let y = actual; y >= 1990; y--) anios.push(y);
+  const anios = getCCAAnios();  // dinámico: solo años que CCA tiene cargados
   return `
     <div class="wizard-step">
       ${_stepHeader(3, '📅 Año del vehículo')}
@@ -1055,6 +1062,7 @@ function renderStep3_Anio() {
         <option value="">— Elegí un año —</option>
         ${anios.map(y => `<option value="${y}" ${wizardData.usado_anio === y ? 'selected' : ''}>${y}</option>`).join('')}
       </select>
+      <div class="step-help" style="margin-top:8px">Rango: ${anios[anios.length-1]} a ${anios[0]} (según la planilla CCA)</div>
     </div>
   `;
 }
