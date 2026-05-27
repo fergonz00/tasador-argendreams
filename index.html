@@ -539,6 +539,13 @@ input, select, textarea { font-family: var(--font); }
 .byd-card-actions { display: flex; gap: 8px; margin-top: 12px; }
 .byd-card-actions .det-btn { flex: 0 0 auto; min-width: 0; padding: 8px 14px; font-size: 13px; }
 
+/* ─── BANNER "A CORREGIR" EN PASO DEL WIZARD ─── */
+.step-fix-banner {
+  background: var(--red-light); color: var(--red);
+  border: 1.5px solid var(--red); border-radius: 8px;
+  padding: 10px 12px; margin-top: 12px; font-size: 13px; line-height: 1.4;
+}
+
 /* ─── BANNER IMPERSONATION ─── */
 .imperson-banner {
   background: var(--accent); color: white;
@@ -1364,6 +1371,7 @@ let currentStep = 0;
 let fotos = [];          // File[]
 let fotoPreviews = [];   // data-URLs
 let editingTasacionId = null;  // si != null, estamos editando una rebotada
+let camposACorregir = [];      // labels que el admin marcó al rebotar (avisos por paso)
 const TOTAL_STEPS = 12;
 
 function iniciarWizard() {
@@ -1372,6 +1380,7 @@ function iniciarWizard() {
   fotoPreviews = [];
   currentStep = 0;
   editingTasacionId = null;
+  camposACorregir = [];
   renderWizard();
 }
 
@@ -1493,10 +1502,17 @@ function validarStep(step) {
 
 // ─── STEPS ───────────────────────────────────────────────────────
 function _stepHeader(num, titulo, help) {
+  const fixLabels = camposACorregir.length
+    ? CAMPOS_CORREGIBLES.filter(c => c.step === num && camposACorregir.includes(c.label)).map(c => c.label)
+    : [];
+  const fixBanner = fixLabels.length
+    ? `<div class="step-fix-banner">⚠️ El admin pidió corregir esto: <strong>${fixLabels.join(', ')}</strong></div>`
+    : '';
   return `
     <div class="step-num">Paso ${num} de ${TOTAL_STEPS}</div>
     <div class="step-title">${titulo}</div>
     ${help ? `<div class="step-help">${help}</div>` : ''}
+    ${fixBanner}
   `;
 }
 
@@ -2275,10 +2291,21 @@ function renderDetalleHTML(t, modo) {
 // Estado del modal abierto (compartido admin + vendedor)
 let detalleActual = null; // { t, modo, comentariosAdmin, reventasPrecios, descuentoSel, ganadorId }
 
-// Campos que el admin puede marcar como "a corregir" al rebotar (se guardan como labels legibles)
+// Campos que el admin puede marcar como "a corregir" al rebotar.
+// `step` = paso del wizard (1-12) donde le aparece el aviso al vendedor.
 const CAMPOS_CORREGIBLES = [
-  'Datos del usado', 'Kilómetros', 'Color', 'Provincia',
-  '0km equivalente', 'BYD pretendido', 'Precio ofrecido', 'Fotos'
+  { label: 'Cliente',              step: 1 },
+  { label: 'Marca',                step: 2 },
+  { label: 'Año',                  step: 3 },
+  { label: 'Modelo',               step: 4 },
+  { label: 'Versión',              step: 5 },
+  { label: '0km equivalente',      step: 6 },
+  { label: 'Kilómetros',           step: 7 },
+  { label: 'Color / Provincia',    step: 8 },
+  { label: 'BYD pretendido',       step: 9 },
+  { label: 'Precio ofrecido',      step: 10 },
+  { label: 'Stock entrega rápida', step: 11 },
+  { label: 'Fotos',                step: 12 }
 ];
 
 // Abre el modal de detalle cargando los datos relacionados según el estado
@@ -2389,9 +2416,9 @@ function mostrarFormRebote() {
       <textarea id="reboteNota" placeholder="Ej: Las fotos no muestran el interior. Subí 2 más y revisá el kilometraje."></textarea>
       <label class="detalle-field-label" style="margin-top:14px; display:block;">Campos a corregir (opcional)</label>
       <div class="campos-corregir">
-        ${CAMPOS_CORREGIBLES.map(label => `
+        ${CAMPOS_CORREGIBLES.map(c => `
           <label class="campo-check" onclick="this.classList.toggle('checked')">
-            <input type="checkbox" value="${label}"> ${label}
+            <input type="checkbox" value="${c.label}"> ${c.label}
           </label>`).join('')}
       </div>
       <div class="detalle-actions" style="margin-top:16px;">
@@ -2970,9 +2997,15 @@ function cargarTasacionParaEdicion(t) {
   fotoPreviews = [];
   editingTasacionId = t.id;
   currentStep = 0;
+  // Campos que el admin marcó al rebotar → avisos por paso (del último rebote)
+  camposACorregir = (detalleActual && detalleActual.comentariosAdmin && detalleActual.comentariosAdmin[0]
+    && detalleActual.comentariosAdmin[0].campos_a_corregir) || [];
   cambiarTabVendedor('nueva');
   renderWizard();
-  showToast('Tasación cargada para editar. Corregí lo necesario y reenviá.', '');
+  const aviso = camposACorregir.length
+    ? `A corregir: ${camposACorregir.join(', ')}. Te marqué los pasos.`
+    : 'Corregí lo necesario y reenviá.';
+  showToast(aviso, '');
 }
 
 // ─── INIT ────────────────────────────────────────────────────────
