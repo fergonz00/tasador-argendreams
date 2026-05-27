@@ -722,6 +722,7 @@ input, select, textarea { font-family: var(--font); }
     <div class="filtros-bar" id="reventaFiltros">
       <button class="filtro-pill active" onclick="filtrarReventa(this,'por_tasar')">⏳ Por tasar</button>
       <button class="filtro-pill" onclick="filtrarReventa(this,'ya_tase')">✅ Ya tasé</button>
+      <button class="filtro-pill" onclick="filtrarReventa(this,'seleccionadas')">🏆 Seleccionadas</button>
       <button class="filtro-pill" onclick="filtrarReventa(this,'todas')">Todas</button>
     </div>
     <div id="reventaList" class="tas-list"></div>
@@ -2603,7 +2604,8 @@ async function enviarPrecioVendedor() {
     await sbPatch('tasaciones', `?id=eq.${t.id}`, {
       estado: 'precio_al_vendedor',
       descuento_pct_admin: desc,
-      precio_final_admin: final
+      precio_final_admin: final,
+      reventa_ganadora_id: ganador.reventa_id   // para avisarle a la reventa elegida
     });
     showToast('Precio enviado al vendedor', 'success');
     cerrarDetalle();
@@ -2622,10 +2624,10 @@ function precioEnviadoHTML(t, esAdmin) {
       ${esAdmin ? `<div class="rp-row"><span class="rp-muted">Descuento aplicado</span><span>${t.descuento_pct_admin}%</span></div>` : ''}
     </div>
     <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">
-      ${esAdmin ? 'Esperando que el vendedor confirme con el cliente.' : 'Confirmá con el cliente y marcá el resultado.'}</p>
+      ${esAdmin ? 'Cuando el cliente confirme, marcá "Precio aceptado". Se le avisa a la reventa elegida que el usado se toma a su precio.' : 'Confirmá con el cliente y marcá el resultado.'}</p>
     <div class="detalle-actions" style="margin-top:12px;">
-      <button class="det-btn green" onclick="cerrarTasacion('tomada')">✅ Marcar TOMADA</button>
-      <button class="det-btn red" onclick="cerrarTasacion('no_tomada')">❌ Marcar NO TOMADA</button>
+      <button class="det-btn green" onclick="cerrarTasacion('tomada')">✅ Precio aceptado — usado tomado</button>
+      <button class="det-btn red" onclick="cerrarTasacion('no_tomada')">❌ Cliente no aceptó</button>
     </div>
   </div>`;
 }
@@ -2645,12 +2647,14 @@ function cerradaHTML(t) {
 
 async function cerrarTasacion(resultado) {
   const t = detalleActual.t;
-  const label = resultado === 'tomada' ? 'TOMADA' : 'NO TOMADA';
-  if (!confirm(`¿Marcar esta tasación como ${label}?`)) return;
+  const msg = resultado === 'tomada'
+    ? '¿Confirmás que el cliente aceptó el precio y el usado se toma como parte de pago?\n\nSe le avisa a la reventa elegida que su precio fue seleccionado.'
+    : '¿Marcar que el cliente NO aceptó / no se toma el usado?';
+  if (!confirm(msg)) return;
   showLoading('Cerrando...');
   try {
     await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'cerrada', resultado });
-    showToast(`Tasación cerrada (${label})`, 'success');
+    showToast(resultado === 'tomada' ? 'Usado tomado ✓ — reventa notificada' : 'Operación cerrada (no tomada)', 'success');
     const modo = detalleActual.modo;
     cerrarDetalle();
     if (modo === 'admin') await loadAdminTasaciones();
@@ -2678,9 +2682,11 @@ async function loadReventaTasaciones() {
   list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando...</div>';
   try {
     // Solo columnas que la reventa puede ver (sin cliente / byd / precio ofrecido / IA)
-    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,ronda_actual,created_at';
+    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,resultado,ronda_actual,reventa_ganadora_id,created_at';
+    // Ve: las que están a tasar (en_reventa/precios_recibidos) + las que ganó (precio_al_vendedor/cerrada con ella elegida)
+    const orFiltro = `or=(estado.in.(en_reventa,precios_recibidos),and(reventa_ganadora_id.eq.${currentUser.id},estado.in.(precio_al_vendedor,cerrada)))`;
     reventaTasacionesData = await sbGet('tasaciones',
-      `?estado=in.(en_reventa,precios_recibidos)&order=created_at.desc&select=${sel}`);
+      `?${orFiltro}&order=created_at.desc&select=${sel}`);
     // Mis precios (de cualquier ronda) para saber cuáles ya tasé
     const precios = await sbGet('reventas_precios',
       `?reventa_id=eq.${currentUser.id}&select=tasacion_id,ronda,precio,comentario`);
@@ -2694,12 +2700,28 @@ async function loadReventaTasaciones() {
 }
 
 function _miPrecioDe(t) { return reventaMisPrecios[`${t.id}_${t.ronda_actual}`] || null; }
+function _esActivaReventa(t) { return ['en_reventa', 'precios_recibidos'].includes(t.estado); }
+function _gane(t) { return t.reventa_ganadora_id === currentUser.id; }
+
+// Badge de estado para la card de reventa
+function _badgeReventa(t) {
+  const mp = _miPrecioDe(t);
+  if (t.estado === 'cerrada' && t.resultado === 'tomada' && _gane(t))
+    return { txt: '🏆 Tomado a tu precio', bg: 'var(--green-light)', fg: 'var(--green)' };
+  if (t.estado === 'cerrada')
+    return { txt: '🗂️ Cerrada', bg: 'var(--grey-2)', fg: 'var(--grey-4)' };
+  if (t.estado === 'precio_al_vendedor' && _gane(t))
+    return { txt: '🏆 Seleccionado', bg: '#dbeafe', fg: '#1e40af' };
+  if (mp) return { txt: '✅ Tasado', bg: 'var(--green-light)', fg: 'var(--green)' };
+  return { txt: '⏳ Por tasar', bg: 'var(--orange-light)', fg: 'var(--orange)' };
+}
 
 function renderReventaTasaciones() {
   const list = document.getElementById('reventaList');
   let arr = reventaTasacionesData;
-  if (reventaFiltro === 'por_tasar')    arr = arr.filter(t => !_miPrecioDe(t));
-  else if (reventaFiltro === 'ya_tase') arr = arr.filter(t => _miPrecioDe(t));
+  if (reventaFiltro === 'por_tasar')         arr = arr.filter(t => _esActivaReventa(t) && !_miPrecioDe(t));
+  else if (reventaFiltro === 'ya_tase')      arr = arr.filter(t => _esActivaReventa(t) && _miPrecioDe(t));
+  else if (reventaFiltro === 'seleccionadas') arr = arr.filter(t => !_esActivaReventa(t));
 
   if (!arr.length) {
     list.innerHTML = `<div class="tas-list-empty"><span class="emoji">📋</span>${
@@ -2710,6 +2732,7 @@ function renderReventaTasaciones() {
 
   list.innerHTML = arr.map(t => {
     const mp = _miPrecioDe(t);
+    const b = _badgeReventa(t);
     return `<div class="tas-card" onclick="verDetalleReventa('${t.id}')">
       <div class="tas-card-row">
         <div>
@@ -2717,7 +2740,7 @@ function renderReventaTasaciones() {
           <div class="tas-card-sub">${t.usado_version || '—'} · ${t.usado_color || '—'} · ${t.usado_provincia || '—'}</div>
           ${mp ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Tu precio: ${formatARS(mp.precio)}</div>` : ''}
         </div>
-        <span class="tas-card-estado" style="background:${mp ? 'var(--green-light)' : 'var(--orange-light)'}; color:${mp ? 'var(--green)' : 'var(--orange)'};">${mp ? '✅ Tasado' : '⏳ Por tasar'}</span>
+        <span class="tas-card-estado" style="background:${b.bg}; color:${b.fg};">${b.txt}</span>
       </div>
     </div>`;
   }).join('');
@@ -2738,6 +2761,32 @@ async function verDetalleReventa(id) {
 
 function renderAccionesReventa(t) {
   const mp = detalleActual.miPrecio;
+
+  // Cerrada y tomada con esta reventa elegida → aviso de que el auto se toma a su precio
+  if (t.estado === 'cerrada' && t.resultado === 'tomada' && _gane(t)) {
+    return `<div class="detalle-section" style="border:none;">
+      <div class="detalle-section-title">🏆 Tu precio fue seleccionado</div>
+      <div class="resumen-precio">
+        <div class="rp-row"><span>El usado se toma a tu precio</span><span class="rp-big">${formatARS(mp ? mp.precio : 0)}</span></div>
+      </div>
+      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">El cliente aceptó la operación: este auto se toma como parte de pago <strong>a tu precio</strong>. Coordiná la recepción del usado con el admin.</p>
+    </div>`;
+  }
+  // Cerrada sin que se haya tomado (cliente no avanzó)
+  if (t.estado === 'cerrada') {
+    return `<div class="detalle-section" style="border:none;">
+      <div class="detalle-field-value muted">Esta operación se cerró: el cliente no avanzó con la toma del usado.</div>
+    </div>`;
+  }
+  // Precio enviado al cliente y esta reventa fue la elegida → esperando confirmación
+  if (t.estado === 'precio_al_vendedor' && _gane(t)) {
+    return `<div class="detalle-section" style="border:none;">
+      <div class="detalle-section-title">🏆 Fuiste seleccionado</div>
+      <p style="font-size:14px; color:var(--black); line-height:1.5;">El admin eligió tu precio${mp ? ` de <strong>${formatARS(mp.precio)}</strong>` : ''} como el mejor y se lo pasó al cliente. Cuando el cliente confirme, te avisamos que el auto se toma a tu precio.</p>
+    </div>`;
+  }
+
+  // Activa (en_reventa / precios_recibidos): cargar/actualizar precio
   return `<div class="detalle-section" style="border:none;">
     <div class="detalle-section-title">💰 Tu precio de toma</div>
     ${mp ? `<div class="detalle-field-value muted" style="margin-bottom:8px;">Ya cargaste ${formatARS(mp.precio)}. Podés actualizarlo.</div>` : ''}
