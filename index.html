@@ -719,12 +719,12 @@ input, select, textarea { font-family: var(--font); }
 
   <!-- VISTA REVENTA -->
   <div class="view" id="reventaView">
-    <div class="view-placeholder">
-      <span class="emoji">💰</span>
-      <h2>Vista Reventa</h2>
-      <p>Lista simplificada de tasaciones a tasar. Cada una muestra: marca, modelo, año, km, versión, color, provincia y fotos. Comentarios del admin si los hay. Único input: tu precio de toma.</p>
-      <span class="badge">FASE 3 — Próximamente</span>
+    <div class="filtros-bar" id="reventaFiltros">
+      <button class="filtro-pill active" onclick="filtrarReventa(this,'por_tasar')">⏳ Por tasar</button>
+      <button class="filtro-pill" onclick="filtrarReventa(this,'ya_tase')">✅ Ya tasé</button>
+      <button class="filtro-pill" onclick="filtrarReventa(this,'todas')">Todas</button>
     </div>
+    <div id="reventaList" class="tas-list"></div>
   </div>
 
 </div>
@@ -932,6 +932,8 @@ async function continuarLogin() {
     Promise.all([loadCCA(), loadPrecios0km().then(() => loadVW0km()), loadBydModelos()]).catch(e => console.error('Data load fail:', e));
   } else if (currentUser.rol === 'reventa') {
     document.getElementById('reventaView').classList.add('active');
+    reventaFiltro = 'por_tasar';
+    loadReventaTasaciones();
   } else {
     // Vendedor puro
     document.getElementById('vendedorView').classList.add('active');
@@ -2172,7 +2174,7 @@ function renderDetalleHTML(t, modo) {
       <button onclick="cerrarDetalle()" aria-label="Cerrar">✕</button>
     </div>
     <div class="detalle-body">
-      <span class="estado-pill-big estado-${t.estado}">${labelEstado(t.estado)}</span>
+      ${!isReventa ? `<span class="estado-pill-big estado-${t.estado}">${labelEstado(t.estado)}</span>` : ''}
 
       ${verDatos ? `
         <div class="detalle-section">
@@ -2266,6 +2268,13 @@ function renderDetalleHTML(t, modo) {
         </div>
       ` : ''}
 
+      ${isReventa && (detalleActual && detalleActual.comentariosReventa && detalleActual.comentariosReventa.length) ? `
+        <div class="detalle-section">
+          <div class="detalle-section-title">📝 Notas del admin</div>
+          ${detalleActual.comentariosReventa.map(c => `<div class="detalle-comment" style="margin-bottom:6px;">${c.comentario}</div>`).join('')}
+        </div>
+      ` : ''}
+
       <div class="detalle-section">
         <div class="detalle-section-title">📸 Fotos (${fotos.length})</div>
         ${fotos.length === 0 ? `<div class="detalle-field-value muted">Sin fotos.</div>` : `
@@ -2288,6 +2297,7 @@ function renderDetalleHTML(t, modo) {
 
       ${isAdmin ? renderAccionesAdmin(t) : ''}
       ${modo === 'vendedor' ? renderAccionesVendedor(t) : ''}
+      ${isReventa ? renderAccionesReventa(t) : ''}
 
       <div class="detalle-section" style="text-align:center; border:none;">
         <button onclick="cerrarDetalle()" class="det-btn ghost">Cerrar</button>
@@ -2324,11 +2334,13 @@ const CAMPOS_CORREGIBLES = [
 async function abrirDetalle(t, modo) {
   showLoading('Cargando detalle...');
   try {
-    const rel = await cargarRelacionados(t);
+    const rel = await cargarRelacionados(t, modo);
     detalleActual = {
       t, modo,
       comentariosAdmin: rel.comentariosAdmin,
       reventasPrecios: rel.reventasPrecios,
+      comentariosReventa: rel.comentariosReventa,
+      miPrecio: rel.miPrecio,
       descuentoSel: Number(t.descuento_pct_admin) || 9,
       ganadorId: rel.reventasPrecios.length ? rel.reventasPrecios[0].id : null
     };
@@ -2343,8 +2355,19 @@ async function abrirDetalle(t, modo) {
   }
 }
 
-async function cargarRelacionados(t) {
-  const out = { comentariosAdmin: [], reventasPrecios: [] };
+async function cargarRelacionados(t, modo) {
+  const out = { comentariosAdmin: [], reventasPrecios: [], comentariosReventa: [], miPrecio: null };
+
+  // Reventa: solo notas del admin + SU propio precio de esta ronda (nunca los de otros)
+  if (modo === 'reventa') {
+    out.comentariosReventa = await sbGet('comentarios_reventa',
+      `?tasacion_id=eq.${t.id}&order=created_at.desc&select=comentario,created_at`);
+    const mp = await sbGet('reventas_precios',
+      `?tasacion_id=eq.${t.id}&reventa_id=eq.${currentUser.id}&ronda=eq.${t.ronda_actual}&select=precio,comentario`);
+    out.miPrecio = mp[0] || null;
+    return out;
+  }
+
   if (['rebotada', 'pendiente_admin'].includes(t.estado)) {
     out.comentariosAdmin = await sbGet('comentarios_admin',
       `?tasacion_id=eq.${t.id}&order=created_at.desc`);
@@ -2641,6 +2664,122 @@ function editarDesdeDetalle() {
   const t = detalleActual.t;
   cerrarDetalle();
   cargarTasacionParaEdicion(t);
+}
+
+// ═════════════════════════════════════════════════════════════════
+// FASE 3 — Vista Reventa (lista simplificada + carga de precio de toma)
+// ═════════════════════════════════════════════════════════════════
+let reventaTasacionesData = [];
+let reventaMisPrecios = {};   // clave: `${tasacion_id}_${ronda}` → {precio, comentario, ronda}
+let reventaFiltro = 'por_tasar';
+
+async function loadReventaTasaciones() {
+  const list = document.getElementById('reventaList');
+  list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando...</div>';
+  try {
+    // Solo columnas que la reventa puede ver (sin cliente / byd / precio ofrecido / IA)
+    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,ronda_actual,created_at';
+    reventaTasacionesData = await sbGet('tasaciones',
+      `?estado=in.(en_reventa,precios_recibidos)&order=created_at.desc&select=${sel}`);
+    // Mis precios (de cualquier ronda) para saber cuáles ya tasé
+    const precios = await sbGet('reventas_precios',
+      `?reventa_id=eq.${currentUser.id}&select=tasacion_id,ronda,precio,comentario`);
+    reventaMisPrecios = {};
+    precios.forEach(p => { reventaMisPrecios[`${p.tasacion_id}_${p.ronda}`] = p; });
+    renderReventaTasaciones();
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⚠️</span>Error cargando. Recargá la página.</div>';
+  }
+}
+
+function _miPrecioDe(t) { return reventaMisPrecios[`${t.id}_${t.ronda_actual}`] || null; }
+
+function renderReventaTasaciones() {
+  const list = document.getElementById('reventaList');
+  let arr = reventaTasacionesData;
+  if (reventaFiltro === 'por_tasar')    arr = arr.filter(t => !_miPrecioDe(t));
+  else if (reventaFiltro === 'ya_tase') arr = arr.filter(t => _miPrecioDe(t));
+
+  if (!arr.length) {
+    list.innerHTML = `<div class="tas-list-empty"><span class="emoji">📋</span>${
+      reventaTasacionesData.length === 0 ? 'No hay vehículos para tasar en este momento.' : 'No hay con este filtro.'
+    }</div>`;
+    return;
+  }
+
+  list.innerHTML = arr.map(t => {
+    const mp = _miPrecioDe(t);
+    return `<div class="tas-card" onclick="verDetalleReventa('${t.id}')">
+      <div class="tas-card-row">
+        <div>
+          <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km</div>
+          <div class="tas-card-sub">${t.usado_version || '—'} · ${t.usado_color || '—'} · ${t.usado_provincia || '—'}</div>
+          ${mp ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Tu precio: ${formatARS(mp.precio)}</div>` : ''}
+        </div>
+        <span class="tas-card-estado" style="background:${mp ? 'var(--green-light)' : 'var(--orange-light)'}; color:${mp ? 'var(--green)' : 'var(--orange)'};">${mp ? '✅ Tasado' : '⏳ Por tasar'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filtrarReventa(btn, filtro) {
+  reventaFiltro = filtro;
+  document.querySelectorAll('#reventaFiltros .filtro-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderReventaTasaciones();
+}
+
+async function verDetalleReventa(id) {
+  const t = reventaTasacionesData.find(x => x.id === id);
+  if (!t) return;
+  await abrirDetalle(t, 'reventa');
+}
+
+function renderAccionesReventa(t) {
+  const mp = detalleActual.miPrecio;
+  return `<div class="detalle-section" style="border:none;">
+    <div class="detalle-section-title">💰 Tu precio de toma (ronda ${t.ronda_actual})</div>
+    ${mp ? `<div class="detalle-field-value muted" style="margin-bottom:8px;">Ya cargaste ${formatARS(mp.precio)} en esta ronda. Podés actualizarlo.</div>` : ''}
+    <div class="accion-form">
+      <label class="detalle-field-label">Precio de toma (ARS)</label>
+      <input type="number" id="reventaPrecio" class="byd-in" min="0" step="10000" value="${mp ? mp.precio : ''}" placeholder="Ej. 15000000" style="margin-top:6px;">
+      <label class="detalle-field-label" style="margin-top:12px; display:block;">Comentario (opcional)</label>
+      <textarea id="reventaComentario" placeholder="Ej. Sujeto a revisión mecánica / faltan fotos del motor.">${mp && mp.comentario ? mp.comentario : ''}</textarea>
+      <div class="detalle-actions" style="margin-top:14px;">
+        <button class="det-btn ghost" onclick="cerrarDetalle()">Cancelar</button>
+        <button class="det-btn green" onclick="guardarPrecioReventa('${t.id}')">💾 ${mp ? 'Actualizar' : 'Cargar'} precio</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function guardarPrecioReventa(id) {
+  const precio = parseFloat(document.getElementById('reventaPrecio').value);
+  const comentario = (document.getElementById('reventaComentario').value || '').trim();
+  if (!(precio > 0)) { showToast('Ingresá un precio de toma válido', 'error'); return; }
+  const t = detalleActual.t;
+  const ronda = t.ronda_actual;
+  showLoading('Guardando precio...');
+  try {
+    if (detalleActual.miPrecio) {
+      await sbPatch('reventas_precios',
+        `?tasacion_id=eq.${id}&reventa_id=eq.${currentUser.id}&ronda=eq.${ronda}`,
+        { precio, comentario: comentario || null });
+    } else {
+      await sbPost('reventas_precios',
+        { tasacion_id: id, reventa_id: currentUser.id, ronda, precio, comentario: comentario || null });
+    }
+    // Si era la primera oferta de la ronda, marcar la tasación como "precios recibidos"
+    if (t.estado === 'en_reventa') {
+      await sbPatch('tasaciones', `?id=eq.${id}`, { estado: 'precios_recibidos' });
+    }
+    showToast('Precio cargado ✓', 'success');
+    cerrarDetalle();
+    await loadReventaTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al guardar el precio', 'error');
+  } finally { hideLoading(); }
 }
 
 // ═════════════════════════════════════════════════════════════════
