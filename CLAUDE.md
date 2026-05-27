@@ -90,12 +90,15 @@ Los modelos BYD y sus precios de lista USD viven en la **tabla Supabase `byd_mod
 - CRUD: `guardarModeloByd` (POST si `_nuevo`, si no PATCH), `borrarModeloByd` (DELETE; las tasaciones no se afectan — guardan snapshot), todos con guard `_esSuperadmin()`. Modelo/versión se guardan en MAYÚSCULAS.
 - ⚠️ El "solo yo" se valida en el cliente (RLS OFF, anon key escribe). Mismo modelo de seguridad que el resto de la app.
 
-## Vista de Reventa (lo que SÍ y NO ve) — PENDIENTE
+## Vista de Reventa (Fase 3) — IMPLEMENTADA (commit `1933df2`)
 
-**SÍ ve:** marca, modelo, año, km, versión, color, provincia, fotos, comentarios del admin
-**NO ve:** datos del cliente, análisis IA, precio ofrecido al cliente, BYD que consulta, precios de otros reventas, CCA, FMG, internas
+**SÍ ve:** marca, modelo, año, km, versión, color, provincia, fotos, notas del admin (`comentarios_reventa`)
+**NO ve:** datos del cliente, análisis IA, precio ofrecido al cliente, BYD que consulta, **precios de otros reventas**, CCA, FMG, internas
 
-Carga un único campo: **precio de toma** (en ARS).
+- `reventaView`: lista de tasaciones en `en_reventa`/`precios_recibidos` (solo columnas no sensibles en el `select`), filtros **Por tasar / Ya tasé / Todas**.
+- Click → `abrirDetalle(t, 'reventa')` reusa `renderDetalleHTML` (oculta cliente/equiv/byd/IA/estado por `verDatos`/`isReventa`) + sección "Notas del admin" + acciones de reventa.
+- `cargarRelacionados` en modo reventa: trae solo `comentarios_reventa` + **su propio** precio de la ronda (nunca los de otros).
+- Carga un único campo: **precio de toma (ARS)** + comentario opcional. `guardarPrecioReventa`: INSERT (o PATCH si ya cargó en esta ronda) en `reventas_precios`; si la tasación estaba `en_reventa` la pasa a `precios_recibidos` (alimenta el ranking 2D del admin). El reenvío del admin (`ronda_actual+1`) hace que la tasación vuelva a aparecer como "Por tasar".
 
 ## Vista de Admin (Agustín) — FASES 2A/2B/2C/2D IMPLEMENTADAS
 
@@ -179,7 +182,7 @@ Todos con `debe_cambiar_clave = true` → forzados a cambiarla en primer login.
 2. **Probar end-to-end**: login admin → rebotar/enviar a reventas; login vendedor → ver motivo del rebote + reenviar. Para el ranking (2D), cargar filas en `reventas_precios` por SQL o esperar la Fase 3
 
 ### Medio plazo
-3. **Fase 3**: Vista Reventa (lista simplificada + carga de precio) — **clave para probar 2D de punta a punta**. Al cargar precio: `INSERT reventas_precios` + setear `estado='precios_recibidos'` si era `en_reventa`
+3. ✅ **Fase 3 HECHA** (commit `1933df2`): vista reventa (lista + carga de precio) — ver sección "Vista de Reventa". **Con esto el flujo completo vendedor → admin → reventas → ranking → precio al vendedor funciona de punta a punta.**
 4. ✅ **Fase 4 HECHA** (commit `c8efe03`): panel Configuración (Usuarios + Modelos BYD) — ver sección abajo
 5. **Fase 5**: Notificaciones WhatsApp — cuando Fer tenga la nueva línea Meta
 
