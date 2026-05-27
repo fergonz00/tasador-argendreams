@@ -14,7 +14,7 @@ App web de tasación de autos usados para **ArgenDreams**, concesionaria nueva q
   - Project ref: `xcijbomhvwwlzgmazvep`
   - URL: `https://xcijbomhvwwlzgmazvep.supabase.co`
   - Publishable key (formato nuevo `sb_publishable_NPO73kz-5gDAYeiZnmZmcA_gNe6Y31M`) hardcodeada en `index.html`
-- Hosting: GitHub Pages con dominio propio vía CNAME — **dominio definido: `tasador.argendreams.online`** (ya registrado, falta apuntar)
+- Hosting: **GitHub Pages — DEPLOYADA** en `http://tasador.argendreams.online`. Repo público `github.com/fergonz00/tasador-argendreams` (rama `master`, archivo `CNAME`). DNS en DonWeb: CNAME `tasador`→`fergonz00.github.io` + A raíz `185.199.108.153`. Commits con `fer_gonzalez88@hotmail.com` (cuenta GitHub `fergonz00`). ⏳ HTTPS: esperar cert de GitHub y tildar "Enforce HTTPS". ⏳ Pendiente: **Cloudflare Access** (portón) — requiere mover NS a Cloudflare.
 - Análisis IA de fotos: Edge Function `analyze-photos` ya copiada de TGA en `supabase/functions/analyze-photos/index.ts`. **Pendiente: deployarla al proyecto nuevo + cargar secret ANTHROPIC_API_KEY**
 - Notificaciones WhatsApp: edge function se deja preparada pero sin disparar hasta que Fer configure nueva línea Meta + plantillas
 - Dev local: `INICIAR.bat` (doble click → arranca `python -m http.server 8000` + abre `http://localhost:8000`). NO se puede usar con `file:///` (CORS bloquea fetch a Google Sheets)
