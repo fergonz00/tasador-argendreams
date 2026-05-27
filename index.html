@@ -2097,6 +2097,8 @@ async function verDetalleTasacion(id) {
 // ═════════════════════════════════════════════════════════════════
 let adminTasacionesData = [];
 let adminFiltroEstado = 'pendiente_admin';
+let adminTotalReventas = 0;          // reventas activas (para "X de Y")
+let adminBidsPorTasacion = {};       // tasacion_id → Set de reventa_id que pusieron precio
 
 // Solapas del admin con su explicación
 const ADMIN_FILTROS = [
@@ -2126,7 +2128,17 @@ async function loadAdminTasaciones() {
   list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando tasaciones...</div>';
   try {
     const qs = `?order=created_at.desc&select=*,vendedor:vendedor_id(nombre,usuario),reventa_final:reventa_final_id(nombre,usuario)`;
-    adminTasacionesData = await sbGet('tasaciones', qs);
+    const [tas, reventas, bids] = await Promise.all([
+      sbGet('tasaciones', qs),
+      sbGet('usuarios', '?rol=eq.reventa&activo=eq.true&select=id'),
+      sbGet('reventas_precios', '?select=tasacion_id,reventa_id')
+    ]);
+    adminTasacionesData = tas;
+    adminTotalReventas = reventas.length;
+    adminBidsPorTasacion = {};
+    bids.forEach(b => {
+      (adminBidsPorTasacion[b.tasacion_id] = adminBidsPorTasacion[b.tasacion_id] || new Set()).add(b.reventa_id);
+    });
     renderAdminFiltros();
     renderAdminTasaciones();
   } catch (e) {
@@ -2155,6 +2167,23 @@ function renderAdminFiltros() {
 
   const f = ADMIN_FILTROS.find(x => x.key === adminFiltroEstado);
   document.getElementById('adminFiltroSub').textContent = f ? f.sub : '';
+}
+
+// Pill de estado en la card (en cerradas distingue tomada / no tomada)
+function _estadoPillCard(t) {
+  if (t.estado === 'cerrada') {
+    const tomada = t.resultado === 'tomada';
+    return `<span class="tas-card-estado" style="background:${tomada ? 'var(--green-light)' : 'var(--red-light)'}; color:${tomada ? 'var(--green)' : 'var(--red)'};">${tomada ? '✅ Tomada' : '❌ No tomada'}</span>`;
+  }
+  return `<span class="tas-card-estado estado-${t.estado}">${labelEstado(t.estado)}</span>`;
+}
+
+// Cuántas reventas cargaron precio (para en_reventa / precios_recibidos)
+function _bidsLine(t) {
+  if (!['en_reventa', 'precios_recibidos'].includes(t.estado)) return '';
+  const n = (adminBidsPorTasacion[t.id] && adminBidsPorTasacion[t.id].size) || 0;
+  const completo = adminTotalReventas > 0 && n >= adminTotalReventas;
+  return `<div class="tas-card-sub" style="margin-top:4px; font-weight:600; color:${completo ? 'var(--green)' : 'var(--grey-4)'};">👥 ${n} de ${adminTotalReventas} reventas cargaron precio</div>`;
 }
 
 // Pista de acción en cada card (solo cuando hay algo que hacer)
@@ -2186,10 +2215,11 @@ function renderAdminTasaciones() {
         <div>
           <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km</div>
           <div class="tas-card-sub">Cliente: ${t.cliente_nombre || '—'} · Vendedor: ${t.vendedor?.nombre || '—'} · ${formatFechaCorta(t.created_at)}</div>
+          ${_bidsLine(t)}
           ${t.precio_final_admin ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Precio toma: ${formatARS(t.precio_final_admin)}</div>` : ''}
           ${hint ? `<div class="tas-card-hint">⚠️ ${hint}</div>` : ''}
         </div>
-        <span class="tas-card-estado estado-${t.estado}">${labelEstado(t.estado)}</span>
+        ${_estadoPillCard(t)}
       </div>
     </div>`;
   }).join('');
