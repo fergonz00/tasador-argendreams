@@ -2093,7 +2093,7 @@ async function loadAdminTasaciones() {
   list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando tasaciones...</div>';
   try {
     // Traemos todas + el nombre del vendedor para mostrar
-    const qs = `?order=created_at.desc&select=*,vendedor:vendedor_id(nombre,usuario)`;
+    const qs = `?order=created_at.desc&select=*,vendedor:vendedor_id(nombre,usuario),reventa_final:reventa_final_id(nombre,usuario)`;
     adminTasacionesData = await sbGet('tasaciones', qs);
     renderAdminTasaciones();
   } catch (e) {
@@ -2344,7 +2344,9 @@ async function abrirDetalle(t, modo) {
       miPrecio: rel.miPrecio,
       descuentoSel: Number(t.descuento_pct_admin) || 9,
       ganadorId: rel.reventasPrecios.length ? rel.reventasPrecios[0].id : null,
-      vistaMejora: false
+      vistaMejora: false,
+      vistaConfirmarToma: false,
+      tomaSel: null
     };
     document.getElementById('detalleModal').innerHTML = renderDetalleHTML(t, modo);
     document.getElementById('detalleOverlay').classList.add('active');
@@ -2394,7 +2396,7 @@ function renderAccionesAdmin(t) {
     case 'rebotada':          return infoSection('🔁 Rebotada — esperando que el vendedor corrija y reenvíe.', ultimoReboteHTML());
     case 'en_reventa':
     case 'precios_recibidos': return detalleActual.vistaMejora ? formMejoraHTML(t) : rankingHTML(t);
-    case 'precio_al_vendedor':return precioEnviadoHTML(t, true);
+    case 'precio_al_vendedor':return detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t) : precioEnviadoHTML(t, true);
     case 'cerrada':           return cerradaHTML(t);
     default:                  return '';
   }
@@ -2643,51 +2645,134 @@ async function enviarPrecioVendedor() {
 
 // ── Cierre (TOMADA / NO TOMADA) — admin o vendedor ──
 function precioEnviadoHTML(t, esAdmin) {
+  const aceptado = t.cliente_acepto;
   return `<div class="detalle-section">
     <div class="detalle-section-title">✅ Precio enviado al vendedor</div>
     <div class="resumen-precio">
-      <div class="rp-row"><span>Precio de toma</span><span class="rp-big">${formatARS(t.precio_final_admin)}</span></div>
+      <div class="rp-row"><span>Precio de toma (al cliente)</span><span class="rp-big">${formatARS(t.precio_final_admin)}</span></div>
       ${esAdmin ? `<div class="rp-row"><span class="rp-muted">Descuento aplicado</span><span>${t.descuento_pct_admin}%</span></div>` : ''}
     </div>
-    <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">
-      ${esAdmin ? 'Cuando el cliente confirme, marcá "Precio aceptado". Se le avisa a la reventa elegida que el usado se toma a su precio.' : 'Confirmá con el cliente y marcá el resultado.'}</p>
-    <div class="detalle-actions" style="margin-top:12px;">
-      <button class="det-btn green" onclick="cerrarTasacion('tomada')">✅ Precio aceptado — usado tomado</button>
-      <button class="det-btn red" onclick="cerrarTasacion('no_tomada')">❌ Cliente no aceptó</button>
-    </div>
+    ${aceptado ? `<div class="detalle-comment" style="margin-top:10px; background:var(--green-light); border-color:var(--green); color:var(--green);">✅ El cliente aceptó el precio.</div>` : ''}
+    ${esAdmin ? `
+      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">${aceptado ? 'El cliente aceptó. Confirmá la toma y elegí a qué reventa le asignás el usado.' : 'Cuando el cliente confirme, confirmá la toma (elegís a qué reventa asignás el usado).'}</p>
+      <div class="detalle-actions" style="margin-top:12px;">
+        <button class="det-btn green" onclick="abrirConfirmarToma()">✅ Confirmar toma del usado</button>
+        <button class="det-btn red" onclick="cerrarNoTomada()">❌ No se concretó</button>
+      </div>
+    ` : `
+      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">Confirmá con el cliente y marcá el resultado.</p>
+      <div class="detalle-actions" style="margin-top:12px;">
+        <button class="det-btn green" onclick="marcarClienteAcepto()" ${aceptado ? 'disabled' : ''}>✅ Cliente aceptó el precio</button>
+        <button class="det-btn red" onclick="cerrarNoTomada()">❌ Cliente no aceptó</button>
+      </div>
+    `}
   </div>`;
 }
 
 function cerradaHTML(t) {
   const tomada = t.resultado === 'tomada';
+  const esAdmin = detalleActual && detalleActual.modo === 'admin';
   return `<div class="detalle-section">
     <div class="detalle-section-title">🗂️ Tasación cerrada</div>
     <div class="detalle-field-value big" style="color:${tomada ? 'var(--green)' : 'var(--red)'};">
       ${tomada ? '✅ TOMADA' : '❌ NO TOMADA'}
     </div>
     ${t.precio_final_admin ? `
-      <div class="detalle-field-label" style="margin-top:8px;">Precio de toma</div>
+      <div class="detalle-field-label" style="margin-top:8px;">Precio de toma al cliente</div>
       <div class="detalle-field-value">${formatARS(t.precio_final_admin)} (desc. ${t.descuento_pct_admin}%)</div>` : ''}
+    ${tomada && esAdmin && t.reventa_final_precio ? `
+      <div class="detalle-field-label" style="margin-top:8px;">Reventa final · ${t.reventa_final?.nombre || t.reventa_final?.usuario || '—'}</div>
+      <div class="detalle-field-value">Paga ${formatARS(t.reventa_final_precio)} · margen <strong style="color:var(--green);">${formatARS(Number(t.reventa_final_precio) - Number(t.precio_final_admin))}</strong></div>` : ''}
   </div>`;
 }
 
-async function cerrarTasacion(resultado) {
+// Vendedor (o admin) marca que el cliente aceptó el precio (no cierra; el admin confirma la toma)
+async function marcarClienteAcepto() {
   const t = detalleActual.t;
-  const msg = resultado === 'tomada'
-    ? '¿Confirmás que el cliente aceptó el precio y el usado se toma como parte de pago?\n\nSe le avisa a la reventa elegida que su precio fue seleccionado.'
-    : '¿Marcar que el cliente NO aceptó / no se toma el usado?';
-  if (!confirm(msg)) return;
-  showLoading('Cerrando...');
+  showLoading('Guardando...');
   try {
-    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'cerrada', resultado });
-    showToast(resultado === 'tomada' ? 'Usado tomado ✓ — reventa notificada' : 'Operación cerrada (no tomada)', 'success');
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, { cliente_acepto: true });
+    showToast('Marcado: el cliente aceptó el precio', 'success');
     const modo = detalleActual.modo;
     cerrarDetalle();
-    if (modo === 'admin') await loadAdminTasaciones();
-    else await loadMisTasaciones();
-  } catch (e) {
-    console.error(e); showToast('Error al cerrar la tasación', 'error');
-  } finally { hideLoading(); }
+    if (modo === 'admin') await loadAdminTasaciones(); else await loadMisTasaciones();
+  } catch (e) { console.error(e); showToast('Error al guardar', 'error'); }
+  finally { hideLoading(); }
+}
+
+async function cerrarNoTomada() {
+  const t = detalleActual.t;
+  if (!confirm('¿Marcar que no se concretó / el cliente no aceptó? La operación se cierra.')) return;
+  showLoading('Cerrando...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'cerrada', resultado: 'no_tomada' });
+    showToast('Operación cerrada (no tomada)', 'success');
+    const modo = detalleActual.modo;
+    cerrarDetalle();
+    if (modo === 'admin') await loadAdminTasaciones(); else await loadMisTasaciones();
+  } catch (e) { console.error(e); showToast('Error al cerrar', 'error'); }
+  finally { hideLoading(); }
+}
+
+// Confirmar toma: el admin elige a qué reventa le asigna el usado (puede ser otra que pague más)
+function abrirConfirmarToma() {
+  const precios = detalleActual.reventasPrecios || [];
+  if (!precios.length) { showToast('No hay precios de reventas para asignar', 'error'); return; }
+  const ref = precios.find(p => p.reventa_id === detalleActual.t.reventa_ganadora_id);
+  const mayor = precios.slice().sort((a, b) => Number(b.precio) - Number(a.precio))[0];
+  detalleActual.tomaSel = (ref || mayor).id;   // default: la de referencia (si no, la de mayor precio)
+  detalleActual.vistaConfirmarToma = true;
+  rerenderDetalle();
+}
+function cancelarConfirmarToma() { detalleActual.vistaConfirmarToma = false; rerenderDetalle(); }
+function seleccionarToma(id) { detalleActual.tomaSel = id; rerenderDetalle(); }
+
+function confirmarTomaHTML(t) {
+  const precios = (detalleActual.reventasPrecios || []).slice().sort((a, b) => Number(b.precio) - Number(a.precio));
+  const sel = detalleActual.tomaSel;
+  const toma = Number(t.precio_final_admin);
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">✅ Confirmar toma — ¿a qué reventa se la asignás?</div>
+    <p style="font-size:13px; color:var(--grey-4); margin-bottom:10px;">El precio al cliente queda fijo en <strong>${formatARS(toma)}</strong>. Elegí la reventa que se lleva el usado. (Lo que paga − la toma = tu margen.)</p>
+    ${precios.map(p => {
+      const margen = Number(p.precio) - toma;
+      const esRef = p.reventa_id === t.reventa_ganadora_id;
+      return `<label class="ranking-row ${p.id === sel ? 'ganador' : ''}" onclick="seleccionarToma('${p.id}')">
+        <input type="radio" name="toma" ${p.id === sel ? 'checked' : ''}>
+        <span class="ranking-info">
+          <span class="nom">${p.reventa?.nombre || p.reventa?.usuario || 'Reventa'}${esRef ? ' · referencia' : ''}</span>
+          <span class="com">Paga ${formatARS(p.precio)} · margen ${formatARS(margen)}</span>
+        </span>
+        <span class="ranking-precio" style="color:${margen < 0 ? 'var(--red)' : 'var(--green)'};">${formatARS(margen)}</span>
+      </label>`;
+    }).join('')}
+    <div class="detalle-actions" style="margin-top:14px;">
+      <button class="det-btn ghost" onclick="cancelarConfirmarToma()">Cancelar</button>
+      <button class="det-btn green" onclick="confirmarTomaFinal()">✅ Confirmar toma</button>
+    </div>
+  </div>`;
+}
+
+async function confirmarTomaFinal() {
+  const precios = detalleActual.reventasPrecios || [];
+  const row = precios.find(p => p.id === detalleActual.tomaSel);
+  if (!row) { showToast('Elegí una reventa', 'error'); return; }
+  const t = detalleActual.t;
+  const margen = Number(row.precio) - Number(t.precio_final_admin);
+  const nom = row.reventa?.nombre || row.reventa?.usuario || 'Reventa';
+  if (!confirm(`Confirmás la toma del usado.\n\nReventa: ${nom}\nPaga: ${formatARS(row.precio)}\nToma al cliente: ${formatARS(t.precio_final_admin)}\nMargen: ${formatARS(margen)}\n\nSe le avisa a esa reventa que el auto se toma a su precio.`)) return;
+  showLoading('Confirmando toma...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, {
+      estado: 'cerrada', resultado: 'tomada',
+      reventa_final_id: row.reventa_id,
+      reventa_final_precio: row.precio
+    });
+    showToast('Usado tomado ✓ — reventa notificada', 'success');
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) { console.error(e); showToast('Error al confirmar la toma', 'error'); }
+  finally { hideLoading(); }
 }
 
 function editarDesdeDetalle() {
@@ -2708,10 +2793,10 @@ async function loadReventaTasaciones() {
   list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando...</div>';
   try {
     // Solo columnas que la reventa puede ver (sin cliente / byd / precio ofrecido / IA)
-    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,resultado,ronda_actual,reventa_ganadora_id,created_at';
-    // Ve: las que están a tasar (en_reventa/precios_recibidos) + las que efectivamente se tomaron a su precio
-    // (NO ve cuando es la "referencia" en precio_al_vendedor: solo se entera si el usado se toma confirmado)
-    const orFiltro = `or=(estado.in.(en_reventa,precios_recibidos),and(reventa_ganadora_id.eq.${currentUser.id},estado.eq.cerrada,resultado.eq.tomada))`;
+    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,resultado,ronda_actual,reventa_final_id,reventa_final_precio,created_at';
+    // Ve: las que están a tasar (en_reventa/precios_recibidos) + las que efectivamente se le tomaron a ella
+    // (solo se entera si el admin le asignó la toma confirmada; nunca antes)
+    const orFiltro = `or=(estado.in.(en_reventa,precios_recibidos),and(reventa_final_id.eq.${currentUser.id},estado.eq.cerrada,resultado.eq.tomada))`;
     reventaTasacionesData = await sbGet('tasaciones',
       `?${orFiltro}&order=created_at.desc&select=${sel}`);
     // Mis precios (de cualquier ronda) para saber cuáles ya tasé
@@ -2728,7 +2813,7 @@ async function loadReventaTasaciones() {
 
 function _miPrecioDe(t) { return reventaMisPrecios[`${t.id}_${t.ronda_actual}`] || null; }
 function _esActivaReventa(t) { return ['en_reventa', 'precios_recibidos'].includes(t.estado); }
-function _gane(t) { return t.reventa_ganadora_id === currentUser.id; }
+function _gane(t) { return t.reventa_final_id === currentUser.id; }
 
 function _mejoraPedida(t) { const mp = _miPrecioDe(t); return !!(mp && mp.mejora_solicitada); }
 
@@ -2792,11 +2877,11 @@ function renderAccionesReventa(t) {
   // Cerrada y tomada con esta reventa elegida → aviso de que el auto se toma a su precio
   if (t.estado === 'cerrada' && t.resultado === 'tomada' && _gane(t)) {
     return `<div class="detalle-section" style="border:none;">
-      <div class="detalle-section-title">🏆 Tu precio fue seleccionado</div>
+      <div class="detalle-section-title">🏆 El usado se toma a tu precio</div>
       <div class="resumen-precio">
-        <div class="rp-row"><span>El usado se toma a tu precio</span><span class="rp-big">${formatARS(mp ? mp.precio : 0)}</span></div>
+        <div class="rp-row"><span>Te queda esta unidad a</span><span class="rp-big">${formatARS(t.reventa_final_precio || (mp ? mp.precio : 0))}</span></div>
       </div>
-      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">El cliente aceptó la operación: este auto se toma como parte de pago <strong>a tu precio</strong>. Coordiná la recepción del usado con el admin.</p>
+      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">¡Operación confirmada! Este auto se toma como parte de pago <strong>a tu precio</strong>. Coordiná la recepción del usado con el admin.</p>
     </div>`;
   }
   // Cerrada sin que se haya tomado (cliente no avanzó)
