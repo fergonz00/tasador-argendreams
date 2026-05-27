@@ -2435,6 +2435,7 @@ async function abrirDetalle(t, modo) {
       reventasPrecios: rel.reventasPrecios,
       comentariosReventa: rel.comentariosReventa,
       miPrecio: rel.miPrecio,
+      reventasActivas: rel.reventasActivas,
       descuentoSel: Number(t.descuento_pct_admin) || 9,
       ganadorId: rel.reventasPrecios.length ? rel.reventasPrecios[0].id : null,
       vistaMejora: false,
@@ -2453,7 +2454,7 @@ async function abrirDetalle(t, modo) {
 }
 
 async function cargarRelacionados(t, modo) {
-  const out = { comentariosAdmin: [], reventasPrecios: [], comentariosReventa: [], miPrecio: null };
+  const out = { comentariosAdmin: [], reventasPrecios: [], comentariosReventa: [], miPrecio: null, reventasActivas: [] };
 
   // Reventa: solo notas del admin + SU propio precio de esta ronda (nunca los de otros)
   if (modo === 'reventa') {
@@ -2473,6 +2474,11 @@ async function cargarRelacionados(t, modo) {
     out.reventasPrecios = await sbGet('reventas_precios',
       `?tasacion_id=eq.${t.id}&ronda=eq.${t.ronda_actual}&order=precio.desc&select=*,reventa:reventa_id(nombre,usuario)`);
   }
+  // Para "quiénes faltan": lista de reventas activas (cuando aún se está tasando)
+  if (['en_reventa', 'precios_recibidos'].includes(t.estado)) {
+    out.reventasActivas = await sbGet('usuarios',
+      '?rol=eq.reventa&activo=eq.true&select=id,nombre,usuario&order=usuario.asc');
+  }
   return out;
 }
 
@@ -2488,7 +2494,7 @@ function renderAccionesAdmin(t) {
     case 'pendiente_admin':   return accionesPendienteHTML();
     case 'rebotada':          return infoSection('🔁 Rebotada — esperando que el vendedor corrija y reenvíe.', ultimoReboteHTML());
     case 'en_reventa':
-    case 'precios_recibidos': return detalleActual.vistaMejora ? formMejoraHTML(t) : rankingHTML(t);
+    case 'precios_recibidos': return detalleActual.vistaMejora ? formMejoraHTML(t) : (rankingHTML(t) + faltanHTML(t));
     case 'precio_al_vendedor':return detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t) : precioEnviadoHTML(t, true);
     case 'cerrada':           return cerradaHTML(t);
     default:                  return '';
@@ -2668,6 +2674,30 @@ function rankingHTML(t) {
 
 function cambiarDescuento(d) { detalleActual.descuentoSel = d; rerenderDetalle(); }
 function seleccionarGanador(id) { detalleActual.ganadorId = id; rerenderDetalle(); }
+
+// Panel "quiénes faltan cargar precio" + botón Recordar
+function faltanHTML(t) {
+  const activas = detalleActual.reventasActivas || [];
+  if (!activas.length) return '';
+  const pusieron = new Set((detalleActual.reventasPrecios || []).map(p => p.reventa_id));
+  const faltan = activas.filter(r => !pusieron.has(r.id));
+  if (!faltan.length) {
+    return `<div class="detalle-section"><div class="detalle-field-value muted">✅ Las ${activas.length} reventas activas ya cargaron precio.</div></div>`;
+  }
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">⏳ Faltan cargar precio (${faltan.length} de ${activas.length})</div>
+    ${faltan.map(r => `
+      <div class="ranking-row" style="cursor:default;">
+        <span class="ranking-info"><span class="nom">${r.nombre || r.usuario}</span></span>
+        <button class="det-btn outline" style="flex:0 0 auto; min-width:0; padding:6px 12px; font-size:13px;" onclick="recordarPrecio('${r.id}','${escAttr(r.nombre || r.usuario)}')">🔔 Recordar</button>
+      </div>`).join('')}
+  </div>`;
+}
+
+function recordarPrecio(id, nombre) {
+  // TODO Fase 5: disparar Edge Function notify-whatsapp con template recordatorio_precio
+  showToast(`Recordatorio a ${nombre} listo — se enviará por WhatsApp cuando la línea esté activa`, 'success');
+}
 
 // Pedido de mejora DIRIGIDO: el admin elige a qué reventas pedirles mejor precio
 function abrirFormMejora() { detalleActual.vistaMejora = true; rerenderDetalle(); }
