@@ -1501,10 +1501,22 @@ function validarStep(step) {
 }
 
 // ─── STEPS ───────────────────────────────────────────────────────
+// Mapeo de labels VIEJOS (rebotes guardados antes del sistema granular) → pasos del wizard
+const CAMPOS_LEGACY = {
+  'Datos del usado': [2, 3, 4, 5],
+  'Color':           [8],
+  'Provincia':       [8]
+};
+
+// Pasos del wizard a los que aplica un label (granular nuevo o legacy)
+function _stepsDeLabel(label) {
+  const c = CAMPOS_CORREGIBLES.find(x => x.label === label);
+  if (c) return [c.step];
+  return CAMPOS_LEGACY[label] || [];
+}
+
 function _stepHeader(num, titulo, help) {
-  const fixLabels = camposACorregir.length
-    ? CAMPOS_CORREGIBLES.filter(c => c.step === num && camposACorregir.includes(c.label)).map(c => c.label)
-    : [];
+  const fixLabels = camposACorregir.filter(label => _stepsDeLabel(label).includes(num));
   const fixBanner = fixLabels.length
     ? `<div class="step-fix-banner">⚠️ El admin pidió corregir esto: <strong>${fixLabels.join(', ')}</strong></div>`
     : '';
