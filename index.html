@@ -712,6 +712,7 @@ input, select, textarea { font-family: var(--font); }
       <div style="margin:14px 0;">
         <button class="det-btn primary" style="flex:0 0 auto; min-width:0;" onclick="abrirNuevoUsuario()">➕ Nuevo usuario</button>
       </div>
+      <div class="filtros-bar" id="usuariosFiltros" style="margin-bottom:12px;"></div>
       <div id="usuariosList" class="tas-list"></div>
     </div>
 
@@ -3121,6 +3122,7 @@ async function loadUsuarios() {
   list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando usuarios...</div>';
   try {
     usuariosData = await sbGet('usuarios', '?select=id,usuario,nombre,rol,activo,debe_cambiar_clave,telefono_wa&order=usuario.asc');
+    renderUsuariosFiltros();
     renderUsuarios();
   } catch (e) {
     console.error(e);
@@ -3133,10 +3135,31 @@ function _rolBadge(rol) {
   return `<span class="usr-rol-badge rol-${rol}">${label}</span>`;
 }
 
+let usuariosFiltroRol = 'todos';
+
+function renderUsuariosFiltros() {
+  const bar = document.getElementById('usuariosFiltros');
+  if (!bar) return;
+  const fs = [['todos', 'Todos'], ['admin', 'Admin'], ['vendedor', 'Vendedor'], ['reventa', 'Reventa']];
+  bar.innerHTML = fs.map(f => {
+    const k = f[0], l = f[1];
+    const c = k === 'todos' ? usuariosData.length : usuariosData.filter(u => u.rol === k).length;
+    return `<button class="filtro-pill ${k === usuariosFiltroRol ? 'active' : ''}" onclick="filtrarUsuarios('${k}')">${l}${c ? ` <span class="filtro-badge">${c}</span>` : ''}</button>`;
+  }).join('');
+}
+
+function filtrarUsuarios(rol) {
+  usuariosFiltroRol = rol;
+  renderUsuariosFiltros();
+  renderUsuarios();
+}
+
 function renderUsuarios() {
   const list = document.getElementById('usuariosList');
   if (!usuariosData.length) { list.innerHTML = '<div class="tas-list-empty"><span class="emoji">👤</span>No hay usuarios.</div>'; return; }
-  list.innerHTML = usuariosData.map(u => {
+  const arr = usuariosFiltroRol === 'todos' ? usuariosData : usuariosData.filter(u => u.rol === usuariosFiltroRol);
+  if (!arr.length) { list.innerHTML = '<div class="tas-list-empty"><span class="emoji">👤</span>No hay usuarios de este tipo.</div>'; return; }
+  list.innerHTML = arr.map(u => {
     const esGod = SUPERADMINS_USUARIOS.includes(u.usuario);
     const esYo  = currentUser && u.usuario === currentUser.usuario;
     return `<div class="usr-card ${u.activo ? '' : 'inactivo'}">
