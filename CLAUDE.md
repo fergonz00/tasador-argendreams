@@ -97,17 +97,24 @@ const BYD_MODELOS_HARDCODED = [
 
 Carga un único campo: **precio de toma** (en ARS).
 
-## Vista de Admin (Agustín) — FASE 2A IMPLEMENTADA
+## Vista de Admin (Agustín) — FASES 2A/2B/2C/2D IMPLEMENTADAS
 
-**FASE 2A ya hecho:**
+**Lista (2A):**
 - Filtros por estado: ⏳ Pendientes (default) / 🔁 Rebotadas / 🏷️ En reventa / 📊 Precios / ✅ Con precio / 🗂️ Cerradas / Todas
 - Lista de tasaciones tipo cards con vendedor + cliente + modelo + km + fecha + pill de estado
 - Click → modal de detalle completo con: cliente + vendedor, vehículo usado completo, 0km equivalente (con comentario del vendedor si hay), BYD pretendido + precio ofrecido USD + stock rápido, fotos en grid (click abre tamaño real), análisis IA si está
 
-**PENDIENTE (fases 2B/2C/2D):**
-- 2B: botón **Rebotar** → modal para escribir nota + marcar campos a corregir
-- 2C: botón **Enviar a reventas** → cambia estado + crea registros en `reventas_precios`
-- 2D: **Ranking de precios** de reventas con selector de descuento 7%/9%/12% (default 9%). Diferencia $/% que se le gana (solo admin la ve). Botón "reenviar para mejorar" + "enviar precio al vendedor" con validación de mínimo
+**Acciones según estado (2B/2C/2D) — el modal renderiza acciones distintas por `t.estado`:**
+- `pendiente_admin` → botones **🔁 Rebotar** y **🏷️ Enviar a reventas**
+  - **2B Rebotar**: form con textarea (nota) + checkboxes de campos a corregir (labels legibles) → `INSERT comentarios_admin` + `PATCH estado='rebotada'`
+  - **2C Enviar a reventas**: form con comentario opcional → `INSERT comentarios_reventa` (si hay) + `PATCH estado='en_reventa'`. **No** se pre-crean filas en `reventas_precios` (precio es NOT NULL; cada reventa inserta la suya al cargar precio)
+- `en_reventa` / `precios_recibidos` → **2D Ranking**: filas de `reventas_precios` de `ronda_actual` ordenadas por precio desc, radio para elegir ganador (default el más alto), selector de descuento 7/9/12% (default `descuento_pct_admin`), resumen con precio de toma final = `mejor × (1−desc/100)` + margen. Botones **🔁 Reenviar para mejorar** (`ronda_actual+1`, vuelve a `en_reventa`, histórico preservado por la columna `ronda`) y **✅ Enviar precio al vendedor** (`PATCH estado='precio_al_vendedor', precio_final_admin, descuento_pct_admin`)
+- `precio_al_vendedor` → muestra precio enviado + botones **TOMADA / NO TOMADA** (`PATCH estado='cerrada', resultado`)
+- `cerrada` → resumen del resultado
+
+**Vendedor (modal de detalle):** ahora "Mis tasaciones" abre el mismo modal (`abrirDetalle(t,'vendedor')`). Ve sus propios datos (cliente/equiv/BYD/precio, NO el análisis IA). Acciones por estado: `rebotada` → ve el motivo del rebote + "Editar y reenviar"; `precio_al_vendedor` → ve precio de toma + marca TOMADA/NO TOMADA; resto → mensaje informativo.
+
+**Pendiente de probar end-to-end:** el ranking (2D) necesita filas en `reventas_precios`, que las carga la **Fase 3 (vista reventa)** o un INSERT manual. La transición `en_reventa → precios_recibidos` se setea en Fase 3 cuando una reventa carga precio.
 
 ## Sheets externas que usa la app
 
@@ -168,15 +175,13 @@ Todos con `debe_cambiar_clave = true` → forzados a cambiarla en primer login.
 ## Pendientes para próximas sesiones
 
 ### Inmediatos
-1. **Probar end-to-end** la tasación cargada (login admin → ver detalle de la tasación que envió vendedor_test)
-2. **Fase 2B**: botón "Rebotar tasación" con modal (notas + campos a corregir)
-3. **Fase 2C**: botón "Enviar a reventas" + creación de registros base en `reventas_precios`
-4. **Fase 2D**: ranking de precios + descuento configurable + validaciones de envío al vendedor
+1. ✅ **Fase 2B/2C/2D HECHAS** (commit `7223d88`) — rebotar, enviar a reventas, ranking + descuento, cierre TOMADA/NO_TOMADA
+2. **Probar end-to-end**: login admin → rebotar/enviar a reventas; login vendedor → ver motivo del rebote + reenviar. Para el ranking (2D), cargar filas en `reventas_precios` por SQL o esperar la Fase 3
 
 ### Medio plazo
-5. **Fase 3**: Vista Reventa (lista simplificada + carga de precio)
-6. **Fase 4**: Gestión de usuarios + impersonation (solo `fngonzalez`)
-7. **Fase 5**: Notificaciones WhatsApp — cuando Fer tenga la nueva línea Meta
+3. **Fase 3**: Vista Reventa (lista simplificada + carga de precio) — **clave para probar 2D de punta a punta**. Al cargar precio: `INSERT reventas_precios` + setear `estado='precios_recibidos'` si era `en_reventa`
+4. **Fase 4**: Gestión de usuarios + impersonation (solo `fngonzalez`)
+5. **Fase 5**: Notificaciones WhatsApp — cuando Fer tenga la nueva línea Meta
 
 ### Setup pendiente
 8. **Sheet propia BYD** con precios oficiales (reemplaza hardcoded). Plantilla en `supabase/sheet-byd-template.md`
