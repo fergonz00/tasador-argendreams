@@ -382,6 +382,22 @@ input, select, textarea { font-family: var(--font); }
   color: var(--grey-4);
 }
 .filtro-pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+.filtro-pill.accion { border-color: var(--accent); }
+.filtro-pill.active.accion { background: var(--primary); border-color: var(--primary); }
+.filtro-badge {
+  display: inline-block; margin-left: 6px; min-width: 18px; height: 18px; line-height: 18px;
+  padding: 0 5px; font-size: 11px; font-weight: 700; border-radius: 9px;
+  background: var(--grey-2); color: var(--grey-4); text-align: center;
+}
+.filtro-badge.accion { background: var(--accent); color: white; }
+.filtro-sub { font-size: 12px; color: var(--grey-4); margin: 0 0 14px; line-height: 1.4; }
+.admin-accion-resumen {
+  background: var(--red-light); color: var(--accent);
+  border: 1.5px solid var(--accent); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
+}
+.tas-card.urgente { border-left: 4px solid var(--accent); }
+.tas-card-hint { font-size: 12px; font-weight: 600; color: var(--accent); margin-top: 4px; }
 
 /* ─── DETALLE TASACIÓN (modal grande) ─── */
 .detalle-overlay {
@@ -669,15 +685,9 @@ input, select, textarea { font-family: var(--font); }
 
   <!-- VISTA ADMIN -->
   <div class="view" id="adminView">
-    <div class="filtros-bar" id="adminFiltros">
-      <button class="filtro-pill active" onclick="filtrarAdminTasaciones(this,'pendiente_admin')">⏳ Pendientes</button>
-      <button class="filtro-pill" onclick="filtrarAdminTasaciones(this,'rebotada')">🔁 Rebotadas</button>
-      <button class="filtro-pill" onclick="filtrarAdminTasaciones(this,'en_reventa')">🏷️ En reventa</button>
-      <button class="filtro-pill" onclick="filtrarAdminTasaciones(this,'precios_recibidos')">📊 Precios</button>
-      <button class="filtro-pill" onclick="filtrarAdminTasaciones(this,'precio_al_vendedor')">✅ Con precio</button>
-      <button class="filtro-pill" onclick="filtrarAdminTasaciones(this,'cerrada')">🗂️ Cerradas</button>
-      <button class="filtro-pill" onclick="filtrarAdminTasaciones(this,'todas')">Todas</button>
-    </div>
+    <div id="adminResumenAccion" class="admin-accion-resumen" style="display:none;"></div>
+    <div class="filtros-bar" id="adminFiltros"></div>
+    <div id="adminFiltroSub" class="filtro-sub"></div>
     <div id="adminTasacionesList" class="tas-list"></div>
   </div>
 
@@ -2088,18 +2098,71 @@ async function verDetalleTasacion(id) {
 let adminTasacionesData = [];
 let adminFiltroEstado = 'pendiente_admin';
 
+// Solapas del admin con su explicación
+const ADMIN_FILTROS = [
+  { key: 'pendiente_admin',    label: '⏳ Pendientes', sub: 'Tasaciones nuevas para revisar. Entrá a cada una para rebotarla (pedir correcciones) o enviarla a reventas.' },
+  { key: 'rebotada',           label: '🔁 Rebotadas',  sub: 'Rebotadas al vendedor. Esperando que corrija y reenvíe — no requieren acción tuya por ahora.' },
+  { key: 'en_reventa',         label: '🏷️ En reventa', sub: 'Enviadas a las reventas, que están cargando sus precios. Podés entrar para pedir mejora a alguna.' },
+  { key: 'precios_recibidos',  label: '📊 Precios',    sub: 'Ya hay precios de reventas. Entrá para ver el ranking, elegir y enviar el precio de toma al vendedor.' },
+  { key: 'precio_al_vendedor', label: '✅ Con precio', sub: 'Precio enviado al vendedor. Cuando el cliente acepte, confirmá con la reventa para cerrar la operación.' },
+  { key: 'cerrada',            label: '🗂️ Cerradas',  sub: 'Operaciones finalizadas (tomadas o no tomadas).' },
+  { key: 'todas',              label: 'Todas',         sub: 'Todas las tasaciones, sin filtrar por estado.' }
+];
+
+// Cuántas requieren ACCIÓN del admin en cada estado
+function _accionCount(key) {
+  if (key === 'pendiente_admin' || key === 'precios_recibidos')
+    return adminTasacionesData.filter(t => t.estado === key).length;
+  if (key === 'precio_al_vendedor')
+    return adminTasacionesData.filter(t => t.estado === 'precio_al_vendedor' && t.cliente_acepto).length;
+  return 0;
+}
+function _estadoCount(key) {
+  return key === 'todas' ? adminTasacionesData.length : adminTasacionesData.filter(t => t.estado === key).length;
+}
+
 async function loadAdminTasaciones() {
   const list = document.getElementById('adminTasacionesList');
   list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando tasaciones...</div>';
   try {
-    // Traemos todas + el nombre del vendedor para mostrar
     const qs = `?order=created_at.desc&select=*,vendedor:vendedor_id(nombre,usuario),reventa_final:reventa_final_id(nombre,usuario)`;
     adminTasacionesData = await sbGet('tasaciones', qs);
+    renderAdminFiltros();
     renderAdminTasaciones();
   } catch (e) {
     console.error(e);
     list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⚠️</span>Error cargando. Recargá la página.</div>';
   }
+}
+
+function renderAdminFiltros() {
+  const bar = document.getElementById('adminFiltros');
+  bar.innerHTML = ADMIN_FILTROS.map(f => {
+    const cnt = _estadoCount(f.key);
+    const acc = _accionCount(f.key);
+    const badge = (f.key !== 'todas' && cnt > 0) ? `<span class="filtro-badge ${acc > 0 ? 'accion' : ''}">${cnt}</span>` : '';
+    return `<button class="filtro-pill ${f.key === adminFiltroEstado ? 'active' : ''} ${acc > 0 ? 'accion' : ''}" onclick="filtrarAdminTasaciones('${f.key}')">${f.label}${badge}</button>`;
+  }).join('');
+
+  const totalAcc = ['pendiente_admin', 'precios_recibidos', 'precio_al_vendedor'].reduce((s, k) => s + _accionCount(k), 0);
+  const resumen = document.getElementById('adminResumenAccion');
+  if (totalAcc > 0) {
+    resumen.style.display = 'block';
+    resumen.innerHTML = `🔴 <strong>${totalAcc}</strong> ${totalAcc === 1 ? 'tasación requiere' : 'tasaciones requieren'} tu acción — están en las solapas marcadas en rojo.`;
+  } else {
+    resumen.style.display = 'none';
+  }
+
+  const f = ADMIN_FILTROS.find(x => x.key === adminFiltroEstado);
+  document.getElementById('adminFiltroSub').textContent = f ? f.sub : '';
+}
+
+// Pista de acción en cada card (solo cuando hay algo que hacer)
+function _adminCardHint(t) {
+  if (t.estado === 'pendiente_admin')   return 'Revisá: rebotar o enviar a reventas';
+  if (t.estado === 'precios_recibidos') return 'Revisá el ranking y enviá el precio';
+  if (t.estado === 'precio_al_vendedor' && t.cliente_acepto) return 'Cliente aceptó: confirmá con la reventa';
+  return null;
 }
 
 function renderAdminTasaciones() {
@@ -2116,25 +2179,25 @@ function renderAdminTasaciones() {
     return;
   }
 
-  list.innerHTML = filtradas.map(t => `
-    <div class="tas-card ${t.estado}" onclick="verDetalleAdmin('${t.id}')">
+  list.innerHTML = filtradas.map(t => {
+    const hint = _adminCardHint(t);
+    return `<div class="tas-card ${hint ? 'urgente' : ''}" onclick="verDetalleAdmin('${t.id}')">
       <div class="tas-card-row">
         <div>
           <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km</div>
           <div class="tas-card-sub">Cliente: ${t.cliente_nombre || '—'} · Vendedor: ${t.vendedor?.nombre || '—'} · ${formatFechaCorta(t.created_at)}</div>
           ${t.precio_final_admin ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Precio toma: ${formatARS(t.precio_final_admin)}</div>` : ''}
+          ${hint ? `<div class="tas-card-hint">⚠️ ${hint}</div>` : ''}
         </div>
         <span class="tas-card-estado estado-${t.estado}">${labelEstado(t.estado)}</span>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
-function filtrarAdminTasaciones(btn, estado) {
+function filtrarAdminTasaciones(estado) {
   adminFiltroEstado = estado;
-  document.querySelectorAll('#adminFiltros .filtro-pill').forEach(b => b.classList.remove('activa'));
-  document.querySelectorAll('#adminFiltros .filtro-pill').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  renderAdminFiltros();
   renderAdminTasaciones();
 }
 
