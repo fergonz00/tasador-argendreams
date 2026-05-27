@@ -180,8 +180,23 @@ Todos con `debe_cambiar_clave = true` → forzados a cambiarla en primer login.
 
 ### Medio plazo
 3. **Fase 3**: Vista Reventa (lista simplificada + carga de precio) — **clave para probar 2D de punta a punta**. Al cargar precio: `INSERT reventas_precios` + setear `estado='precios_recibidos'` si era `en_reventa`
-4. **Fase 4**: Gestión de usuarios + impersonation (solo `fngonzalez`)
+4. ✅ **Fase 4 HECHA** (commit `c8efe03`): panel Configuración (Usuarios + Modelos BYD) — ver sección abajo
 5. **Fase 5**: Notificaciones WhatsApp — cuando Fer tenga la nueva línea Meta
+
+## Configuración — solo superadmin `fngonzalez` (Fase 4)
+
+Botón **⚙️ Configuración** en el header (al lado de "Cambiar modo"), visible solo si `_esSuperadmin()`. Abre `configView` con dos tabs:
+
+- **👤 Usuarios** (réplica de tasador-tga adaptada a la tabla `usuarios`):
+  - Listar (`loadUsuarios`/`renderUsuarios`) con usuario, nombre, rol badge, flags (inactivo / debe cambiar clave), `★ GOD` para superadmins.
+  - **Crear / Editar / Reset clave**: modal único (`usuarioModalHTML` + `guardarUsuarioModal`). Reset y alta setean `debe_cambiar_clave=true`. Roles: vendedor/admin/reventa. Campos: usuario, nombre, clave provisoria (alta), rol, telefono_wa, activo (edición).
+  - **Activar/Desactivar**: baja lógica (`toggleActivoUsuario`, no borra).
+  - **Impersonation** (`entrarComoUsuario`): guarda al superadmin en `_impersonating`, hace `currentUser = target`, llama `continuarLogin()` (saltea cambio de clave) y muestra **banner rojo fijo** (`#impersonateBanner`) con "Volver a mi sesión" (`volverASesionOriginal`). `btnConfig` se oculta mientras impersonás (dejás de ser superadmin).
+- **⚡ Modelos BYD**: el panel CRUD de `byd_modelos` (antes era vista aparte, ahora vive acá).
+
+⚠️ Todo se valida client-side (`_esSuperadmin()`); RLS sigue OFF. Único superadmin: `SUPERADMINS_USUARIOS = ['fngonzalez']`.
+
+**Usuarios de prueba existentes** (uno por perfil): `vendedor_test` (vendedor), `agustin` (admin puro, NO god), `reventa_test_1`/`reventa_test_2` (reventa), `fngonzalez` (admin + god).
 
 ### Setup pendiente
 8. **Sheet propia BYD** con precios oficiales (reemplaza hardcoded). Plantilla en `supabase/sheet-byd-template.md`
