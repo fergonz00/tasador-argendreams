@@ -2652,17 +2652,17 @@ function precioEnviadoHTML(t, esAdmin) {
       <div class="rp-row"><span>Precio de toma (al cliente)</span><span class="rp-big">${formatARS(t.precio_final_admin)}</span></div>
       ${esAdmin ? `<div class="rp-row"><span class="rp-muted">Descuento aplicado</span><span>${t.descuento_pct_admin}%</span></div>` : ''}
     </div>
-    ${aceptado ? `<div class="detalle-comment" style="margin-top:10px; background:var(--green-light); border-color:var(--green); color:var(--green);">✅ El cliente aceptó el precio.</div>` : ''}
+    ${aceptado ? `<div class="detalle-comment" style="margin-top:10px; background:var(--green-light); border-color:var(--green); color:var(--green);">✅ Precio aceptado — usado a tomar (OK por el vendedor)</div>` : ''}
     ${esAdmin ? `
-      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">${aceptado ? 'El cliente aceptó. Confirmá la toma y elegí a qué reventa le asignás el usado.' : 'Cuando el cliente confirme, confirmá la toma (elegís a qué reventa asignás el usado).'}</p>
+      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">${aceptado ? 'El cliente aceptó. <strong>Confirmá con la reventa</strong> para cerrar y avisarle.' : 'Cuando el vendedor marque que el cliente aceptó, confirmá con la reventa. (Igual podés confirmar vos.)'}</p>
       <div class="detalle-actions" style="margin-top:12px;">
-        <button class="det-btn green" onclick="abrirConfirmarToma()">✅ Confirmar toma del usado</button>
+        <button class="det-btn green" onclick="abrirConfirmarToma()">✅ Confirmar con reventa</button>
         <button class="det-btn red" onclick="cerrarNoTomada()">❌ No se concretó</button>
       </div>
     ` : `
-      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">Confirmá con el cliente y marcá el resultado.</p>
+      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">${aceptado ? 'Ya marcaste que el cliente aceptó. El admin confirma con la reventa.' : 'Confirmá con el cliente y marcá el resultado.'}</p>
       <div class="detalle-actions" style="margin-top:12px;">
-        <button class="det-btn green" onclick="marcarClienteAcepto()" ${aceptado ? 'disabled' : ''}>✅ Cliente aceptó el precio</button>
+        <button class="det-btn green" onclick="marcarClienteAcepto()" ${aceptado ? 'disabled' : ''}>✅ Precio aceptado</button>
         <button class="det-btn red" onclick="cerrarNoTomada()">❌ Cliente no aceptó</button>
       </div>
     `}
@@ -2715,12 +2715,25 @@ async function cerrarNoTomada() {
 }
 
 // Confirmar toma: el admin elige a qué reventa le asigna el usado (puede ser otra que pague más)
+// Precio de referencia (el que fijó la toma al cliente): la fila de la reventa de referencia,
+// o reconstruido desde precio_final_admin + descuento si esa fila ya no está.
+function _precioReferencia(t) {
+  const precios = detalleActual.reventasPrecios || [];
+  const refRow = precios.find(p => p.reventa_id === t.reventa_ganadora_id);
+  if (refRow) return Number(refRow.precio);
+  const desc = Number(t.descuento_pct_admin) || 9;
+  return Math.round(Number(t.precio_final_admin) / (1 - desc / 100));
+}
+
 function abrirConfirmarToma() {
   const precios = detalleActual.reventasPrecios || [];
   if (!precios.length) { showToast('No hay precios de reventas para asignar', 'error'); return; }
-  const ref = precios.find(p => p.reventa_id === detalleActual.t.reventa_ganadora_id);
-  const mayor = precios.slice().sort((a, b) => Number(b.precio) - Number(a.precio))[0];
-  detalleActual.tomaSel = (ref || mayor).id;   // default: la de referencia (si no, la de mayor precio)
+  const t = detalleActual.t;
+  const refRow = precios.find(p => p.reventa_id === t.reventa_ganadora_id);
+  // default: la de referencia; si no está, la más barata que iguale/supere la referencia
+  const refPrecio = _precioReferencia(t);
+  const fallback = precios.slice().sort((a, b) => Number(a.precio) - Number(b.precio)).find(p => Number(p.precio) >= refPrecio) || precios[0];
+  detalleActual.tomaSel = (refRow || fallback).id;
   detalleActual.vistaConfirmarToma = true;
   rerenderDetalle();
 }
@@ -2731,24 +2744,28 @@ function confirmarTomaHTML(t) {
   const precios = (detalleActual.reventasPrecios || []).slice().sort((a, b) => Number(b.precio) - Number(a.precio));
   const sel = detalleActual.tomaSel;
   const toma = Number(t.precio_final_admin);
+  const refPrecio = _precioReferencia(t);
   return `<div class="detalle-section">
-    <div class="detalle-section-title">✅ Confirmar toma — ¿a qué reventa se la asignás?</div>
-    <p style="font-size:13px; color:var(--grey-4); margin-bottom:10px;">El precio al cliente queda fijo en <strong>${formatARS(toma)}</strong>. Elegí la reventa que se lleva el usado. (Lo que paga − la toma = tu margen.)</p>
+    <div class="detalle-section-title">✅ Confirmar con reventa — ¿a quién le asignás el usado?</div>
+    <p style="font-size:13px; color:var(--grey-4); margin-bottom:10px;">El precio al cliente queda fijo en <strong>${formatARS(toma)}</strong>. Mantené la reventa de referencia o pasala a una que pague <strong>más</strong> (no menos). Lo que paga − la toma = tu margen.</p>
     ${precios.map(p => {
-      const margen = Number(p.precio) - toma;
+      const precio = Number(p.precio);
+      const margen = precio - toma;
       const esRef = p.reventa_id === t.reventa_ganadora_id;
-      return `<label class="ranking-row ${p.id === sel ? 'ganador' : ''}" onclick="seleccionarToma('${p.id}')">
-        <input type="radio" name="toma" ${p.id === sel ? 'checked' : ''}>
+      const habil = precio >= refPrecio;   // solo igual o más caro que la referencia
+      const nombre = p.reventa?.nombre || p.reventa?.usuario || 'Reventa';
+      return `<label class="ranking-row ${p.id === sel ? 'ganador' : ''}" style="${habil ? '' : 'opacity:.45; cursor:not-allowed;'}" ${habil ? `onclick="seleccionarToma('${p.id}')"` : ''}>
+        <input type="radio" name="toma" ${p.id === sel ? 'checked' : ''} ${habil ? '' : 'disabled'}>
         <span class="ranking-info">
-          <span class="nom">${p.reventa?.nombre || p.reventa?.usuario || 'Reventa'}${esRef ? ' · referencia' : ''}</span>
-          <span class="com">Paga ${formatARS(p.precio)} · margen ${formatARS(margen)}</span>
+          <span class="nom">${nombre} ${esRef ? '<span class="usr-rol-badge rol-admin" style="font-size:9px; letter-spacing:0;">REFERENCIA</span>' : ''}</span>
+          <span class="com">Paga ${formatARS(precio)} · margen ${formatARS(margen)}${habil ? '' : ' · por debajo de la referencia'}</span>
         </span>
         <span class="ranking-precio" style="color:${margen < 0 ? 'var(--red)' : 'var(--green)'};">${formatARS(margen)}</span>
       </label>`;
     }).join('')}
     <div class="detalle-actions" style="margin-top:14px;">
       <button class="det-btn ghost" onclick="cancelarConfirmarToma()">Cancelar</button>
-      <button class="det-btn green" onclick="confirmarTomaFinal()">✅ Confirmar toma</button>
+      <button class="det-btn green" onclick="confirmarTomaFinal()">✅ Confirmar toma (avisar a la reventa)</button>
     </div>
   </div>`;
 }
@@ -2758,6 +2775,10 @@ async function confirmarTomaFinal() {
   const row = precios.find(p => p.id === detalleActual.tomaSel);
   if (!row) { showToast('Elegí una reventa', 'error'); return; }
   const t = detalleActual.t;
+  if (Number(row.precio) < _precioReferencia(t)) {
+    showToast('Solo podés asignar a una reventa que pague igual o más que la de referencia', 'error');
+    return;
+  }
   const margen = Number(row.precio) - Number(t.precio_final_admin);
   const nom = row.reventa?.nombre || row.reventa?.usuario || 'Reventa';
   if (!confirm(`Confirmás la toma del usado.\n\nReventa: ${nom}\nPaga: ${formatARS(row.precio)}\nToma al cliente: ${formatARS(t.precio_final_admin)}\nMargen: ${formatARS(margen)}\n\nSe le avisa a esa reventa que el auto se toma a su precio.`)) return;
