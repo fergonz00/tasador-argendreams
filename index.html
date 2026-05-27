@@ -933,16 +933,30 @@ const PRECIOS_0KM_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH
 // Columnas: Modelo, Oferta con FyF, ... (sin granularidad de versión)
 const VW_CSV_URL = 'https://docs.google.com/spreadsheets/d/1MJWeHCTbxdqBJwifzgNbHssLLsxAwaSkb66Zc9yv3ko/gviz/tq?tqx=out:csv&gid=1899724741';
 
-// Modelos BYD vigentes (al 2026-05) — pasados por Fer.
-// Cuando esté la sheet propia con precios actualizados, reemplazar.
+// Modelos BYD vigentes + precio de lista en USD (de la hoja "precios vigentes" de Fer).
+// `precios` mapea versión → precio de lista USD. Para actualizar, cambiar estos 8 números.
 const BYD_MODELOS_HARDCODED = [
-  { modelo: 'DOLPHIN MINI 5P 75CV 55KW',           versiones: ['GL', 'GS'] },
-  { modelo: 'SONG PRO 5P DMI PLUG-IN HYBRID',      versiones: ['GL', 'GS'] },
-  { modelo: 'YUAN PRO 5P 94CV 70KW',               versiones: ['GL'] },
-  { modelo: 'YUAN PRO 5P 174CV 130KW',             versiones: ['GS'] },
-  { modelo: 'ATTO 2 5P DMI PLUG-IN HYBRID',        versiones: ['GS'] },
-  { modelo: 'SHARK D/C 1.5T DMO PHEV',             versiones: ['GS'] }
+  { modelo: 'DOLPHIN MINI 5P 75CV 55KW',           versiones: ['GL', 'GS'], precios: { GL: 23990, GS: 24990 } },
+  { modelo: 'SONG PRO 5P DMI PLUG-IN HYBRID',      versiones: ['GL', 'GS'], precios: { GL: 35490, GS: 37490 } },
+  { modelo: 'YUAN PRO 5P 94CV 70KW',               versiones: ['GL'],       precios: { GL: 30900 } },
+  { modelo: 'YUAN PRO 5P 174CV 130KW',             versiones: ['GS'],       precios: { GS: 31900 } },
+  { modelo: 'ATTO 2 5P DMI PLUG-IN HYBRID',        versiones: ['GS'],       precios: { GS: 33990 } },
+  { modelo: 'SHARK D/C 1.5T DMO PHEV',             versiones: ['GS'],       precios: { GS: 59900 } }
 ];
+
+// Precio de lista USD de un BYD (modelo + versión). null si no se encuentra.
+function getBydPrecioLista(modelo, version) {
+  const m = BYD_MODELOS_HARDCODED.find(x => x.modelo === modelo);
+  if (!m || !m.precios) return null;
+  const p = m.precios[version];
+  return (p == null || isNaN(p)) ? null : Number(p);
+}
+
+// Descuento % sobre lista dado un precio ofrecido (ambos en USD). null si falta data.
+function calcDescuentoBYD(precioLista, precioOfrecido) {
+  if (!precioLista || !precioOfrecido || precioLista <= 0) return null;
+  return ((precioLista - precioOfrecido) / precioLista) * 100;
+}
 
 const PROVINCIAS_AR = [
   'CABA', 'Buenos Aires', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes',
@@ -1621,17 +1635,36 @@ function seleccionarBYD(modelo) {
 }
 
 function renderStep10_PrecioOfrecido() {
+  const lista = getBydPrecioLista(wizardData.byd_modelo, wizardData.byd_version);
   return `
     <div class="wizard-step">
       ${_stepHeader(10, '💵 Precio ofrecido al cliente', 'Cuánto le ofreciste al cliente por el 0km BYD que consulta — <strong>en dólares, sin flete ni formulario (FyF)</strong>. Con descuento o promo si aplica.')}
+      ${lista ? `<p style="text-align:center; font-size:13px; color:var(--grey-4); margin-bottom:6px;">Precio de lista: <strong>${formatUSD(lista)}</strong></p>` : ''}
       <label class="step-label">Precio ofrecido (USD, sin FyF)</label>
       <input type="number" class="step-input number-big" min="0" step="500"
         value="${wizardData.precio_ofrecido_cliente || ''}"
-        oninput="wizardData.precio_ofrecido_cliente = parseFloat(this.value) || null; document.getElementById('precioPreview').textContent = formatUSD(wizardData.precio_ofrecido_cliente)"
+        oninput="wizardData.precio_ofrecido_cliente = parseFloat(this.value) || null; actualizarPreviewPrecio()"
         placeholder="Ej. 27500" autofocus>
       <p id="precioPreview" style="text-align:center; color:var(--grey-4); font-size:13px;">${wizardData.precio_ofrecido_cliente ? formatUSD(wizardData.precio_ofrecido_cliente) : '—'}</p>
+      <p id="descuentoPreview" style="text-align:center; font-size:13px; margin-top:2px;">${descuentoBYDLineaHTML(lista, wizardData.precio_ofrecido_cliente)}</p>
     </div>
   `;
+}
+
+// Línea de descuento del BYD (verde si descuento, naranja si sobreprecio)
+function descuentoBYDLineaHTML(lista, ofrecido) {
+  const d = calcDescuentoBYD(lista, ofrecido);
+  if (d == null) return '';
+  if (d < 0) return `<span style="color:var(--orange); font-weight:600;">⚠️ ${Math.abs(d).toFixed(1)}% por encima de lista</span>`;
+  return `<span style="color:var(--green); font-weight:600;">${d.toFixed(1)}% de descuento sobre lista</span>`;
+}
+
+function actualizarPreviewPrecio() {
+  const lista = getBydPrecioLista(wizardData.byd_modelo, wizardData.byd_version);
+  document.getElementById('precioPreview').textContent =
+    wizardData.precio_ofrecido_cliente ? formatUSD(wizardData.precio_ofrecido_cliente) : '—';
+  document.getElementById('descuentoPreview').innerHTML =
+    descuentoBYDLineaHTML(lista, wizardData.precio_ofrecido_cliente);
 }
 
 function renderStep11_StockRapido() {
@@ -1727,6 +1760,7 @@ async function submitTasacion() {
       equiv_0km_comentario: wizardData.equiv_0km_comentario || null,
       byd_modelo: wizardData.byd_modelo,
       byd_version: wizardData.byd_version,
+      byd_precio_lista: getBydPrecioLista(wizardData.byd_modelo, wizardData.byd_version),
       precio_ofrecido_cliente: wizardData.precio_ofrecido_cliente,
       precio_ofrecido_moneda: 'USD',         // BYD siempre USD por ahora
       stock_entrega_rapida: !!wizardData.stock_entrega_rapida,
@@ -1931,6 +1965,11 @@ function renderDetalleHTML(t, modo) {
   const precioOfrecido = t.precio_ofrecido_cliente
     ? (t.precio_ofrecido_moneda === 'USD' ? formatUSD(t.precio_ofrecido_cliente) : formatARS(t.precio_ofrecido_cliente))
     : '—';
+  // Descuento del BYD: snapshot al cargar, o lookup vivo si es una tasación vieja sin snapshot.
+  // Solo válido si el ofrecido también está en USD (BYD se cotiza siempre en USD).
+  const bydLista = t.byd_precio_lista || getBydPrecioLista(t.byd_modelo, t.byd_version);
+  const bydDesc = (!t.precio_ofrecido_moneda || t.precio_ofrecido_moneda === 'USD')
+    ? calcDescuentoBYD(bydLista, t.precio_ofrecido_cliente) : null;
 
   return `
     <div class="detalle-header">
@@ -2016,6 +2055,21 @@ function renderDetalleHTML(t, modo) {
               <div class="detalle-field-value">${t.stock_entrega_rapida ? '✅ Sí' : '❌ No'}</div>
             </div>
           </div>
+          ${bydLista ? `
+            <div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--grey-2); display:flex; gap:24px; flex-wrap:wrap;">
+              <div class="detalle-field">
+                <div class="detalle-field-label">Precio de lista (USD)</div>
+                <div class="detalle-field-value">${formatUSD(bydLista)}</div>
+              </div>
+              ${bydDesc != null ? `
+                <div class="detalle-field">
+                  <div class="detalle-field-label">Descuento sobre lista</div>
+                  <div class="detalle-field-value big" style="color:${bydDesc < 0 ? 'var(--orange)' : 'var(--green)'};">
+                    ${bydDesc < 0 ? `⚠️ +${Math.abs(bydDesc).toFixed(1)}% sobre lista` : `${bydDesc.toFixed(1)}% OFF`}
+                  </div>
+                </div>` : ''}
+            </div>
+          ` : ''}
         </div>
       ` : ''}
 
