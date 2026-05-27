@@ -99,6 +99,7 @@ Los modelos BYD y sus precios de lista USD viven en la **tabla Supabase `byd_mod
 - Click → `abrirDetalle(t, 'reventa')` reusa `renderDetalleHTML` (oculta cliente/equiv/byd/IA/estado por `verDatos`/`isReventa`) + sección "Notas del admin" + acciones de reventa.
 - `cargarRelacionados` en modo reventa: trae solo `comentarios_reventa` + **su propio** precio de la ronda (nunca los de otros).
 - Carga un único campo: **precio de toma (ARS)** + comentario opcional. `guardarPrecioReventa`: INSERT (o PATCH si ya cargó en esta ronda) en `reventas_precios`; si la tasación estaba `en_reventa` la pasa a `precios_recibidos` (alimenta el ranking 2D del admin). El reenvío del admin (`ronda_actual+1`) hace que la tasación vuelva a aparecer como "Por tasar".
+- **Reventa ganadora / aviso de toma** (migration 004 — `tasaciones.reventa_ganadora_id`): al "enviar precio al vendedor" se guarda la reventa elegida. Esa reventa ve en su panel (filtro **🏆 Seleccionadas**) la tasación con badge **🏆 Seleccionado** (estado `precio_al_vendedor`) y, cuando el admin/vendedor marca **"Precio aceptado — usado tomado"** (cierre `tomada`), pasa a **🏆 Tomado a tu precio** con el aviso de que el usado se toma a su precio como parte de pago. El push por WhatsApp queda para Fase 5; por ahora el aviso es in-app.
 
 ## Vista de Admin (Agustín) — FASES 2A/2B/2C/2D IMPLEMENTADAS
 
@@ -262,5 +263,6 @@ C:\proyectos\tasador-argendreams\
     └── migrations/
         ├── 001_add_equiv_comentario.sql ← ya corrida
         ├── 002_precio_ofrecido_moneda.sql ← ya corrida
-        └── 003_byd_modelos.sql ← ⚠️ PENDIENTE de correr en Supabase
+        ├── 003_byd_modelos.sql ← corrida (tabla byd_modelos)
+        └── 004_reventa_ganadora.sql ← ⚠️ correr en Supabase (tasaciones.reventa_ganadora_id)
 ```
