@@ -520,6 +520,25 @@ input, select, textarea { font-family: var(--font); }
 .resumen-precio .rp-muted { opacity: 0.7; font-size: 12px; }
 .resumen-precio .rp-gain { color: #6ee7b7; font-weight: 700; }
 
+/* ─── GESTIÓN MODELOS BYD ─── */
+.byd-card {
+  background: white; border: 1.5px solid var(--grey-2); border-radius: 10px;
+  padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow);
+}
+.byd-card.inactivo { opacity: 0.6; border-style: dashed; }
+.byd-card-grid { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.byd-card-grid > div { flex: 1; min-width: 110px; }
+.byd-card-grid label {
+  display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--grey-3); font-weight: 600; margin-bottom: 4px;
+}
+.byd-in {
+  width: 100%; padding: 8px 10px; border: 1.5px solid var(--grey-2);
+  border-radius: 8px; font-size: 14px;
+}
+.byd-card-actions { display: flex; gap: 8px; margin-top: 12px; }
+.byd-card-actions .det-btn { flex: 0 0 auto; min-width: 0; padding: 8px 14px; font-size: 13px; }
+
 </style>
 </head>
 <body>
@@ -596,6 +615,9 @@ input, select, textarea { font-family: var(--font); }
 
   <!-- VISTA ADMIN -->
   <div class="view" id="adminView">
+    <div id="adminSuperadminBar" style="display:none; margin-bottom:12px;">
+      <button class="det-btn outline" style="flex:0 0 auto; min-width:0;" onclick="abrirGestionByd()">⚙️ Gestionar modelos BYD</button>
+    </div>
     <div class="filtros-bar" id="adminFiltros">
       <button class="filtro-pill active" onclick="filtrarAdminTasaciones(this,'pendiente_admin')">⏳ Pendientes</button>
       <button class="filtro-pill" onclick="filtrarAdminTasaciones(this,'rebotada')">🔁 Rebotadas</button>
@@ -611,6 +633,21 @@ input, select, textarea { font-family: var(--font); }
   <!-- DETALLE TASACIÓN (modal — usado por admin y reventa) -->
   <div class="detalle-overlay" id="detalleOverlay">
     <div class="detalle-modal" id="detalleModal"></div>
+  </div>
+
+  <!-- VISTA GESTIÓN MODELOS BYD (solo superadmin) -->
+  <div class="view" id="gestionBydView">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
+      <button class="det-btn ghost" onclick="cerrarGestionByd()">← Volver</button>
+      <h2 style="font-size:18px; color:var(--primary);">⚙️ Modelos BYD y precios de lista</h2>
+    </div>
+    <p style="font-size:13px; color:var(--grey-4); margin-bottom:16px;">
+      Cada fila es un <strong>modelo + versión</strong> con su precio de lista en USD. Si un modelo tiene varias versiones (GL/GS), vas a ver una fila por versión. Los cambios afectan tasaciones nuevas; las ya cargadas conservan su precio.
+    </p>
+    <div id="gestionBydList"></div>
+    <div style="margin-top:16px;">
+      <button class="det-btn primary" style="flex:0 0 auto; min-width:0;" onclick="agregarModeloByd()">➕ Agregar modelo / versión</button>
+    </div>
   </div>
 
   <!-- VISTA REVENTA -->
@@ -712,6 +749,17 @@ async function sbPatch(table, qs, body) {
   return r.json();
 }
 
+async function sbDelete(table, qs) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}${qs}`, {
+    method: 'DELETE',
+    headers: {
+      'apikey': SUPABASE_ANON,
+      'Authorization': `Bearer ${SUPABASE_ANON}`
+    }
+  });
+  if (!r.ok) throw new Error(`SB DELETE ${table}: ${r.status} ${await r.text()}`);
+}
+
 // ─── LOADING / UTILS ─────────────────────────────────────────────
 function showLoading(text = '') {
   document.getElementById('loadingText').textContent = text;
@@ -807,8 +855,8 @@ async function continuarLogin() {
   if (currentUser.rol === 'admin') {
     // Los admins eligen entre Modo Admin o Modo Vendedor
     document.getElementById('modoSelectorView').classList.add('active');
-    // Pre-cargo CCA en background por si elige vendedor (no bloquea la elección)
-    Promise.all([loadCCA(), loadPrecios0km().then(() => loadVW0km())]).catch(e => console.error('Data load fail:', e));
+    // Pre-cargo CCA + modelos BYD en background por si elige vendedor (no bloquea la elección)
+    Promise.all([loadCCA(), loadPrecios0km().then(() => loadVW0km()), loadBydModelos()]).catch(e => console.error('Data load fail:', e));
   } else if (currentUser.rol === 'reventa') {
     document.getElementById('reventaView').classList.add('active');
   } else {
@@ -819,6 +867,7 @@ async function continuarLogin() {
       await loadCCA();
       await loadPrecios0km();
       await loadVW0km();
+      await loadBydModelos();
     } catch (e) {
       console.error('Data load fail:', e);
       showToast('No se pudieron cargar todos los datos de referencia', 'error');
@@ -838,6 +887,7 @@ function selectMode(mode) {
   if (mode === 'admin') {
     document.getElementById('adminView').classList.add('active');
     document.getElementById('headerUser').textContent = `${currentUser.nombre} · Modo Admin`;
+    document.getElementById('adminSuperadminBar').style.display = _esSuperadmin() ? 'block' : 'none';
     loadAdminTasaciones();
   } else if (mode === 'vendedor') {
     document.getElementById('vendedorView').classList.add('active');
@@ -933,8 +983,8 @@ const PRECIOS_0KM_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH
 // Columnas: Modelo, Oferta con FyF, ... (sin granularidad de versión)
 const VW_CSV_URL = 'https://docs.google.com/spreadsheets/d/1MJWeHCTbxdqBJwifzgNbHssLLsxAwaSkb66Zc9yv3ko/gviz/tq?tqx=out:csv&gid=1899724741';
 
-// Modelos BYD vigentes + precio de lista en USD (de la hoja "precios vigentes" de Fer).
-// `precios` mapea versión → precio de lista USD. Para actualizar, cambiar estos 8 números.
+// Fallback de modelos BYD (si la tabla byd_modelos no existe / falla la carga).
+// La fuente real es la tabla Supabase `byd_modelos`, editable por el superadmin.
 const BYD_MODELOS_HARDCODED = [
   { modelo: 'DOLPHIN MINI 5P 75CV 55KW',           versiones: ['GL', 'GS'], precios: { GL: 23990, GS: 24990 } },
   { modelo: 'SONG PRO 5P DMI PLUG-IN HYBRID',      versiones: ['GL', 'GS'], precios: { GL: 35490, GS: 37490 } },
@@ -944,11 +994,50 @@ const BYD_MODELOS_HARDCODED = [
   { modelo: 'SHARK D/C 1.5T DMO PHEV',             versiones: ['GS'],       precios: { GS: 59900 } }
 ];
 
-// Precio de lista USD de un BYD (modelo + versión). null si no se encuentra.
+// Filas de la tabla byd_modelos (cargadas en login). Cada fila = {modelo, version, precio_lista, activo, orden}.
+let bydModelosData = [];
+
+async function loadBydModelos() {
+  try {
+    bydModelosData = await sbGet('byd_modelos', '?order=orden.asc,modelo.asc,version.asc&select=*');
+  } catch (e) {
+    console.error('byd_modelos load fail — uso fallback hardcodeado:', e);
+    bydModelosData = [];
+  }
+}
+
+// Convierte el fallback hardcodeado a filas planas {modelo, version, precio_lista, activo}
+function _bydFallbackRows() {
+  const rows = [];
+  BYD_MODELOS_HARDCODED.forEach((m, mi) => {
+    m.versiones.forEach((v, vi) => {
+      rows.push({ modelo: m.modelo, version: v, precio_lista: m.precios?.[v] ?? null, activo: true, orden: mi * 10 + vi });
+    });
+  });
+  return rows;
+}
+
+// Filas BYD a usar (tabla si hay datos, si no el fallback). soloActivos para el wizard.
+function getBydRows(soloActivos = true) {
+  const base = bydModelosData.length ? bydModelosData : _bydFallbackRows();
+  return soloActivos ? base.filter(r => r.activo) : base;
+}
+
+function getBydModelosUnicos() {
+  const seen = new Set(), out = [];
+  for (const r of getBydRows(true)) { if (!seen.has(r.modelo)) { seen.add(r.modelo); out.push(r.modelo); } }
+  return out;
+}
+
+function getBydVersiones(modelo) {
+  return getBydRows(true).filter(r => r.modelo === modelo).map(r => r.version);
+}
+
+// Precio de lista USD de un BYD (busca incluso inactivos, para tasaciones viejas). null si no está.
 function getBydPrecioLista(modelo, version) {
-  const m = BYD_MODELOS_HARDCODED.find(x => x.modelo === modelo);
-  if (!m || !m.precios) return null;
-  const p = m.precios[version];
+  const r = getBydRows(false).find(x => x.modelo === modelo && x.version === version);
+  if (!r) return null;
+  const p = r.precio_lista;
   return (p == null || isNaN(p)) ? null : Number(p);
 }
 
@@ -957,6 +1046,8 @@ function calcDescuentoBYD(precioLista, precioOfrecido) {
   if (!precioLista || !precioOfrecido || precioLista <= 0) return null;
   return ((precioLista - precioOfrecido) / precioLista) * 100;
 }
+
+function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
 
 const PROVINCIAS_AR = [
   'CABA', 'Buenos Aires', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes',
@@ -1606,16 +1697,15 @@ function renderStep8_ColorProvincia() {
 }
 
 function renderStep9_BYD() {
-  const versionesBYD = wizardData.byd_modelo
-    ? (BYD_MODELOS_HARDCODED.find(m => m.modelo === wizardData.byd_modelo)?.versiones || [])
-    : [];
+  const modelos = getBydModelosUnicos();
+  const versionesBYD = wizardData.byd_modelo ? getBydVersiones(wizardData.byd_modelo) : [];
   return `
     <div class="wizard-step">
       ${_stepHeader(9, '⚡ 0km BYD que consulta el cliente')}
       <label class="step-label">Modelo BYD</label>
       <select class="step-select" onchange="seleccionarBYD(this.value)">
         <option value="">— Elegí un modelo —</option>
-        ${BYD_MODELOS_HARDCODED.map(m => `<option value="${m.modelo}" ${wizardData.byd_modelo === m.modelo ? 'selected' : ''}>${m.modelo}</option>`).join('')}
+        ${modelos.map(m => `<option value="${escAttr(m)}" ${wizardData.byd_modelo === m ? 'selected' : ''}>${m}</option>`).join('')}
       </select>
       ${wizardData.byd_modelo && versionesBYD.length > 0 ? `
         <label class="step-label" style="margin-top:14px">Versión</label>
@@ -2442,6 +2532,125 @@ function editarDesdeDetalle() {
   const t = detalleActual.t;
   cerrarDetalle();
   cargarTasacionParaEdicion(t);
+}
+
+// ═════════════════════════════════════════════════════════════════
+// GESTIÓN DE MODELOS BYD — solo superadmin (fngonzalez)
+// ═════════════════════════════════════════════════════════════════
+async function abrirGestionByd() {
+  if (!_esSuperadmin()) { showToast('Solo el administrador total puede gestionar modelos', 'error'); return; }
+  showLoading('Cargando modelos...');
+  try { await loadBydModelos(); } finally { hideLoading(); }
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('gestionBydView').classList.add('active');
+  renderGestionByd();
+}
+
+function cerrarGestionByd() {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('adminView').classList.add('active');
+}
+
+function renderGestionByd() {
+  const cont = document.getElementById('gestionBydList');
+  if (bydModelosData.length === 0) {
+    cont.innerHTML = `<div class="tas-list-empty">
+      <span class="emoji">⚠️</span>
+      La tabla <code>byd_modelos</code> está vacía o todavía no existe.<br>
+      Corré la migración <code>supabase/migrations/003_byd_modelos.sql</code> en Supabase y volvé a entrar.<br>
+      <span style="color:var(--grey-3);">Mientras tanto la app usa los 8 modelos hardcodeados (no editables desde acá).</span>
+    </div>`;
+    return;
+  }
+  cont.innerHTML = bydModelosData.map(r => bydCardHTML(r)).join('');
+}
+
+function bydCardHTML(r) {
+  return `<div class="byd-card ${r.activo ? '' : 'inactivo'}" data-id="${r.id}">
+    <div class="byd-card-grid">
+      <div style="flex:2;">
+        <label>Modelo</label>
+        <input class="byd-in" data-f="modelo" value="${escAttr(r.modelo)}" placeholder="DOLPHIN MINI 5P 75CV 55KW">
+      </div>
+      <div style="flex:0 0 80px;">
+        <label>Versión</label>
+        <input class="byd-in" data-f="version" value="${escAttr(r.version)}" placeholder="GL">
+      </div>
+      <div style="flex:0 0 130px;">
+        <label>Precio lista (USD)</label>
+        <input class="byd-in" data-f="precio_lista" type="number" min="0" step="100" value="${r.precio_lista ?? ''}" placeholder="23990">
+      </div>
+      <div style="flex:0 0 70px;">
+        <label>Activo</label>
+        <input type="checkbox" data-f="activo" ${r.activo ? 'checked' : ''} style="width:22px; height:22px; accent-color:var(--green);">
+      </div>
+    </div>
+    <div class="byd-card-actions">
+      <button class="det-btn green" onclick="guardarModeloByd('${r.id}')">💾 Guardar</button>
+      <button class="det-btn red" onclick="borrarModeloByd('${r.id}')">🗑️ Borrar</button>
+    </div>
+  </div>`;
+}
+
+function agregarModeloByd() {
+  if (bydModelosData.length === 0) { showToast('Primero corré la migración 003 en Supabase', 'error'); return; }
+  const maxOrden = bydModelosData.reduce((m, r) => Math.max(m, r.orden || 0), 0);
+  bydModelosData.push({ id: '_new_' + Date.now(), modelo: '', version: '', precio_lista: null, activo: true, orden: maxOrden + 10, _nuevo: true });
+  renderGestionByd();
+  // scroll a la nueva card
+  const cont = document.getElementById('gestionBydList');
+  cont.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function guardarModeloByd(id) {
+  if (!_esSuperadmin()) return;
+  const card = document.querySelector(`.byd-card[data-id="${id}"]`);
+  if (!card) return;
+  const modelo  = card.querySelector('[data-f=modelo]').value.trim().toUpperCase();
+  const version = card.querySelector('[data-f=version]').value.trim().toUpperCase();
+  const precio  = parseFloat(card.querySelector('[data-f=precio_lista]').value);
+  const activo  = card.querySelector('[data-f=activo]').checked;
+  if (!modelo || !version) { showToast('Modelo y versión son obligatorios', 'error'); return; }
+  if (!(precio > 0))       { showToast('Precio de lista inválido', 'error'); return; }
+
+  const row = bydModelosData.find(x => x.id === id);
+  const body = { modelo, version, precio_lista: precio, activo };
+  showLoading('Guardando...');
+  try {
+    if (row && row._nuevo) {
+      body.orden = row.orden || 0;
+      await sbPost('byd_modelos', body);
+    } else {
+      await sbPatch('byd_modelos', `?id=eq.${id}`, body);
+    }
+    await loadBydModelos();
+    renderGestionByd();
+    showToast('Modelo guardado', 'success');
+  } catch (e) {
+    console.error(e);
+    showToast('Error al guardar (¿modelo+versión repetidos?)', 'error');
+  } finally { hideLoading(); }
+}
+
+async function borrarModeloByd(id) {
+  if (!_esSuperadmin()) return;
+  const row = bydModelosData.find(x => x.id === id);
+  if (row && row._nuevo) {   // fila nueva sin guardar: solo la saco de la lista
+    bydModelosData = bydModelosData.filter(x => x.id !== id);
+    renderGestionByd();
+    return;
+  }
+  if (!confirm('¿Borrar este modelo/versión?\n\nLas tasaciones ya cargadas NO se afectan (guardan su precio). Si solo querés ocultarlo del wizard, mejor destildá "Activo" y Guardá.')) return;
+  showLoading('Borrando...');
+  try {
+    await sbDelete('byd_modelos', `?id=eq.${id}`);
+    await loadBydModelos();
+    renderGestionByd();
+    showToast('Modelo borrado', 'success');
+  } catch (e) {
+    console.error(e);
+    showToast('Error al borrar', 'error');
+  } finally { hideLoading(); }
 }
 
 function cargarTasacionParaEdicion(t) {
