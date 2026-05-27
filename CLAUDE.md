@@ -75,22 +75,20 @@ CERRADA (resultado: tomada | no_tomada)
 
 **Todas las validaciones son obligatorias.** No deja avanzar si no se completó el paso.
 
-## Modelos BYD hardcodeados + precio de lista USD (al 2026-05)
+## Modelos BYD + precio de lista USD → tabla `byd_modelos` (editable por superadmin)
 
-```js
-const BYD_MODELOS_HARDCODED = [
-  { modelo: 'DOLPHIN MINI 5P 75CV 55KW',      versiones: ['GL','GS'], precios: { GL: 23990, GS: 24990 } },
-  { modelo: 'SONG PRO 5P DMI PLUG-IN HYBRID', versiones: ['GL','GS'], precios: { GL: 35490, GS: 37490 } },
-  { modelo: 'YUAN PRO 5P 94CV 70KW',          versiones: ['GL'],      precios: { GL: 30900 } },
-  { modelo: 'YUAN PRO 5P 174CV 130KW',        versiones: ['GS'],      precios: { GS: 31900 } },
-  { modelo: 'ATTO 2 5P DMI PLUG-IN HYBRID',   versiones: ['GS'],      precios: { GS: 33990 } },
-  { modelo: 'SHARK D/C 1.5T DMO PHEV',        versiones: ['GS'],      precios: { GS: 59900 } }
-];
-```
+Los modelos BYD y sus precios de lista USD viven en la **tabla Supabase `byd_modelos`** (migration `003_byd_modelos.sql`, seed con los 8 vigentes). La app los lee en `loadBydModelos()` al loguear (admin en background, vendedor con await).
 
-- Precios de lista en **USD** (de la hoja "precios vigentes" de Fer, sheet `1wkg22RKITsjBZOZWuke6R8saSmg3GaGDrGcUQ8tSpVU`). **Esa sheet NO se lee en vivo** porque contiene datos de clientes (bloque ADOP) — por eso se hardcodean los 8 números. Para actualizar: cambiar los valores en `precios`.
-- **Descuento del BYD** (commits `a2f6044`/`b78746e`): `getBydPrecioLista()` + `calcDescuentoBYD()`. Se muestra el **monto en USD + %** (ej: lista 23990 − ofrecido 23000 → "USD 990 de descuento (4,1%)") en el paso 10 en vivo y en el detalle admin/vendedor. `byd_precio_lista` se snapshotea al enviar; tasaciones viejas sin snapshot usan lookup vivo.
-- Si en el futuro se quiere lectura en vivo, armar una sheet **separada solo-precios** y publicarla (ver `supabase/sheet-byd-template.md`).
+- **Fallback**: si la tabla no existe / falla la carga, `getBydRows()` usa `BYD_MODELOS_HARDCODED` (los mismos 8, en `index.html`) para no romper el wizard. El panel de gestión, en ese caso, muestra "corré la migración 003".
+- Helpers: `getBydRows(soloActivos)`, `getBydModelosUnicos()`, `getBydVersiones(modelo)`, `getBydPrecioLista(modelo, version)` (busca incluso inactivos, para tasaciones viejas).
+- Precios de lista en **USD** (origen: hoja "precios vigentes" de Fer, sheet `1wkg22RKITsjBZOZWuke6R8saSmg3GaGDrGcUQ8tSpVU`). **Esa sheet NO se lee en vivo** (tiene datos de clientes en bloque ADOP).
+- **Descuento del BYD** (`calcDescuentoBYD`): muestra **monto USD + %** (ej: lista 23990 − ofrecido 23000 → "USD 990 de descuento (4,1%)") en el paso 10 en vivo y en el detalle admin/vendedor. `byd_precio_lista` se snapshotea al enviar; tasaciones viejas sin snapshot usan lookup vivo.
+
+### Panel "Gestionar modelos BYD" — solo superadmin (`fngonzalez`)
+- Botón `⚙️ Gestionar modelos BYD` en la vista Admin, visible solo si `_esSuperadmin()` (se setea en `selectMode('admin')`).
+- Vista `gestionBydView`: una card por **modelo+versión** con inputs editables (modelo, versión, precio USD, activo) + Guardar/Borrar. `➕ Agregar` crea una fila nueva (POST al guardar).
+- CRUD: `guardarModeloByd` (POST si `_nuevo`, si no PATCH), `borrarModeloByd` (DELETE; las tasaciones no se afectan — guardan snapshot), todos con guard `_esSuperadmin()`. Modelo/versión se guardan en MAYÚSCULAS.
+- ⚠️ El "solo yo" se valida en el cliente (RLS OFF, anon key escribe). Mismo modelo de seguridad que el resto de la app.
 
 ## Vista de Reventa (lo que SÍ y NO ve) — PENDIENTE
 
@@ -130,7 +128,7 @@ Carga un único campo: **precio de toma** (en ARS).
 
 ## Schema Supabase (actual)
 
-7 tablas (sin prefijo, en proyecto propio):
+8 tablas (sin prefijo, en proyecto propio). La 8va es `byd_modelos` (migration 003, ver sección de modelos BYD):
 
 ### `usuarios`
 - id, usuario, clave (texto plano — deuda técnica), nombre, rol (vendedor|admin|reventa)
@@ -245,5 +243,6 @@ C:\proyectos\tasador-argendreams\
     │   └── analyze-photos/index.ts      ← copiado de TGA, pendiente deploy
     └── migrations/
         ├── 001_add_equiv_comentario.sql ← ya corrida
-        └── 002_precio_ofrecido_moneda.sql ← ya corrida
+        ├── 002_precio_ofrecido_moneda.sql ← ya corrida
+        └── 003_byd_modelos.sql ← ⚠️ PENDIENTE de correr en Supabase
 ```
