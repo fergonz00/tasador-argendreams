@@ -270,5 +270,13 @@ C:\proyectos\tasador-argendreams\
         ├── 003_byd_modelos.sql ← corrida (tabla byd_modelos)
         ├── 004_reventa_ganadora.sql ← corrida (tasaciones.reventa_ganadora_id = referencia)
         ├── 005_mejora_solicitada.sql ← corrida (reventas_precios.mejora_solicitada)
-        └── 006_reventa_final.sql ← ⚠️ correr (cliente_acepto, reventa_final_id, reventa_final_precio)
+        └── 006_reventa_final.sql ← corrida (cliente_acepto, reventa_final_id, reventa_final_precio)
+
+**Migrations 001–006 todas corridas en Supabase.**
+
+## Estado de deploy / infra (2026-05-27)
+- **ONLINE** en `http://tasador.argendreams.online` (GitHub Pages, repo PÚBLICO `github.com/fergonz00/tasador-argendreams`, rama `master`, archivo `CNAME`).
+- **Cloudflare en proceso**: NS cambiados en DonWeb a `apollo.ns.cloudflare.com`/`may.ns.cloudflare.com` (esperando propagación). Cuando active: SSL/TLS **Full** + **Always Use HTTPS** ON + **Cloudflare Access** (Zero Trust app sobre `tasador.argendreams.online`, política de emails permitidos = el portón).
+- **Pendiente seguridad de fondo**: RLS + Supabase Auth + hash de contraseñas (la anon key es pública vía la página).
+- **Fase 5 WhatsApp**: 8 plantillas redactadas en `supabase/whatsapp-templates.md`; falta número Meta (en cooldown), crearlas en WhatsApp Manager, y escribir/cablear Edge Function `notify-whatsapp` (+ aviso +1h con `pg_cron`).
 ```
