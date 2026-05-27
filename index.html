@@ -459,6 +459,67 @@ input, select, textarea { font-family: var(--font); }
   margin-bottom: 12px;
 }
 
+/* ─── ACCIONES ADMIN/VENDEDOR (rebotar / reventas / ranking) ─── */
+.detalle-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.det-btn {
+  flex: 1; min-width: 140px; padding: 12px 16px; border-radius: 10px;
+  font-weight: 700; font-size: 14px; text-align: center; color: white;
+}
+.det-btn.primary { background: var(--primary); }
+.det-btn.accent  { background: var(--accent); }
+.det-btn.green   { background: var(--green); }
+.det-btn.red     { background: var(--red); }
+.det-btn.ghost   { background: var(--grey-2); color: var(--grey-4); flex: 0 0 auto; min-width: 0; }
+.det-btn.outline { background: white; color: var(--primary); border: 1.5px solid var(--primary); }
+.det-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.accion-form { background: var(--grey-1); border-radius: 10px; padding: 16px; }
+.accion-form textarea {
+  width: 100%; min-height: 84px; padding: 10px 12px;
+  border: 1.5px solid var(--grey-2); border-radius: 8px; font-size: 14px;
+  resize: vertical; margin-top: 6px;
+}
+.campos-corregir { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.campo-check {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  padding: 8px 10px; background: white; border: 1.5px solid var(--grey-2);
+  border-radius: 8px; cursor: pointer; user-select: none;
+}
+.campo-check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.campo-check.checked { border-color: var(--accent); background: var(--red-light); }
+
+/* Ranking de reventas */
+.ranking-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border: 1.5px solid var(--grey-2);
+  border-radius: 10px; margin-bottom: 8px; cursor: pointer;
+}
+.ranking-row.ganador { border-color: var(--green); background: var(--green-light); }
+.ranking-row input[type=radio] { width: 18px; height: 18px; accent-color: var(--green); }
+.ranking-pos { font-weight: 800; color: var(--grey-3); font-size: 13px; width: 22px; }
+.ranking-info { flex: 1; }
+.ranking-info .nom { font-weight: 700; font-size: 14px; display: block; }
+.ranking-info .com { font-size: 12px; color: var(--grey-4); margin-top: 2px; display: block; }
+.ranking-precio { font-weight: 800; font-size: 16px; color: var(--primary); }
+
+.desc-selector { display: flex; gap: 8px; margin: 10px 0; }
+.desc-pill {
+  flex: 1; padding: 10px; border-radius: 8px; text-align: center;
+  border: 1.5px solid var(--grey-2); background: white; font-weight: 700;
+  cursor: pointer; font-size: 14px; color: var(--grey-4);
+}
+.desc-pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+.resumen-precio {
+  background: var(--primary); color: white; border-radius: 10px;
+  padding: 16px; margin-top: 12px;
+}
+.resumen-precio .rp-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; font-size: 14px; }
+.resumen-precio .rp-row:last-child { margin-bottom: 0; }
+.resumen-precio .rp-big { font-size: 26px; font-weight: 800; }
+.resumen-precio .rp-muted { opacity: 0.7; font-size: 12px; }
+.resumen-precio .rp-gain { color: #6ee7b7; font-weight: 700; }
+
 </style>
 </head>
 <body>
@@ -1787,17 +1848,9 @@ function filtrarMisTasaciones(btn, estado) {
 }
 
 async function verDetalleTasacion(id) {
-  // TODO Fase 1.5: modal con detalle. Por ahora solo log + si está rebotada, ofrecer editar.
   const t = misTasacionesData.find(x => x.id === id);
   if (!t) return;
-  if (t.estado === 'rebotada') {
-    if (confirm('Esta tasación fue rebotada por el admin. ¿Querés corregirla?\n\n(Los datos actuales se cargan en el wizard para que los edites.)')) {
-      cargarTasacionParaEdicion(t);
-    }
-  } else {
-    // Placeholder simple
-    alert(`Tasación #${id.substring(0, 8)}\n\nEstado: ${labelEstado(t.estado)}\n${t.usado_marca} ${t.usado_modelo} ${t.usado_anio}\nKM: ${t.usado_km}\nColor: ${t.usado_color}\nProvincia: ${t.usado_provincia}\nFotos: ${(t.fotos || []).length}\n\n(Vista detallada — próxima fase.)`);
-  }
+  await abrirDetalle(t, 'vendedor');
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -1856,13 +1909,10 @@ function filtrarAdminTasaciones(btn, estado) {
   renderAdminTasaciones();
 }
 
-function verDetalleAdmin(id) {
+async function verDetalleAdmin(id) {
   const t = adminTasacionesData.find(x => x.id === id);
   if (!t) return;
-  const modal = document.getElementById('detalleModal');
-  modal.innerHTML = renderDetalleHTML(t, 'admin');
-  document.getElementById('detalleOverlay').classList.add('active');
-  document.body.style.overflow = 'hidden';
+  await abrirDetalle(t, 'admin');
 }
 
 function cerrarDetalle() {
@@ -1874,6 +1924,7 @@ function cerrarDetalle() {
 function renderDetalleHTML(t, modo) {
   const isAdmin = modo === 'admin';
   const isReventa = modo === 'reventa';
+  const verDatos = modo !== 'reventa';   // admin y vendedor ven cliente/equiv/byd; la reventa no
 
   const fotos = t.fotos || [];
   const equivVigente = t.equiv_0km_marca && t.equiv_0km_modelo;
@@ -1892,12 +1943,14 @@ function renderDetalleHTML(t, modo) {
     <div class="detalle-body">
       <span class="estado-pill-big estado-${t.estado}">${labelEstado(t.estado)}</span>
 
-      ${isAdmin ? `
+      ${verDatos ? `
         <div class="detalle-section">
           <div class="detalle-section-title">👤 Cliente</div>
           <div class="detalle-field-value big">${t.cliente_nombre || '—'}</div>
-          <div class="detalle-field-label" style="margin-top:6px;">Cargado por</div>
-          <div class="detalle-field-value">${t.vendedor?.nombre || '—'} (${t.vendedor?.usuario || '—'})</div>
+          ${isAdmin ? `
+            <div class="detalle-field-label" style="margin-top:6px;">Cargado por</div>
+            <div class="detalle-field-value">${t.vendedor?.nombre || '—'} (${t.vendedor?.usuario || '—'})</div>
+          ` : ''}
         </div>
       ` : ''}
 
@@ -1935,7 +1988,7 @@ function renderDetalleHTML(t, modo) {
         </div>
       </div>
 
-      ${isAdmin ? `
+      ${verDatos ? `
         <div class="detalle-section">
           <div class="detalle-section-title">🆕 0km equivalente vigente</div>
           ${equivVigente ? `
@@ -1986,12 +2039,350 @@ function renderDetalleHTML(t, modo) {
         </div>
       ` : ''}
 
-      <div class="detalle-section" style="text-align:center;">
-        <p style="font-size:12px; color:var(--grey-3); margin-bottom:10px;">Las acciones (rebotar, enviar a reventas, ranking de precios) se agregan en la próxima fase.</p>
-        <button onclick="cerrarDetalle()" style="padding:10px 22px; background:var(--grey-2); color:var(--grey-4); border-radius:8px; font-weight:600;">Cerrar</button>
+      ${isAdmin ? renderAccionesAdmin(t) : ''}
+      ${modo === 'vendedor' ? renderAccionesVendedor(t) : ''}
+
+      <div class="detalle-section" style="text-align:center; border:none;">
+        <button onclick="cerrarDetalle()" class="det-btn ghost">Cerrar</button>
       </div>
     </div>
   `;
+}
+
+// ═════════════════════════════════════════════════════════════════
+// FASE 2B/2C/2D — Acciones del admin sobre la tasación
+// ═════════════════════════════════════════════════════════════════
+
+// Estado del modal abierto (compartido admin + vendedor)
+let detalleActual = null; // { t, modo, comentariosAdmin, reventasPrecios, descuentoSel, ganadorId }
+
+// Campos que el admin puede marcar como "a corregir" al rebotar (se guardan como labels legibles)
+const CAMPOS_CORREGIBLES = [
+  'Datos del usado', 'Kilómetros', 'Color', 'Provincia',
+  '0km equivalente', 'BYD pretendido', 'Precio ofrecido', 'Fotos'
+];
+
+// Abre el modal de detalle cargando los datos relacionados según el estado
+async function abrirDetalle(t, modo) {
+  showLoading('Cargando detalle...');
+  try {
+    const rel = await cargarRelacionados(t);
+    detalleActual = {
+      t, modo,
+      comentariosAdmin: rel.comentariosAdmin,
+      reventasPrecios: rel.reventasPrecios,
+      descuentoSel: Number(t.descuento_pct_admin) || 9,
+      ganadorId: rel.reventasPrecios.length ? rel.reventasPrecios[0].id : null
+    };
+    document.getElementById('detalleModal').innerHTML = renderDetalleHTML(t, modo);
+    document.getElementById('detalleOverlay').classList.add('active');
+    document.body.style.overflow = 'hidden';
+  } catch (e) {
+    console.error(e);
+    showToast('No se pudo cargar el detalle', 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function cargarRelacionados(t) {
+  const out = { comentariosAdmin: [], reventasPrecios: [] };
+  if (['rebotada', 'pendiente_admin'].includes(t.estado)) {
+    out.comentariosAdmin = await sbGet('comentarios_admin',
+      `?tasacion_id=eq.${t.id}&order=created_at.desc`);
+  }
+  if (['en_reventa', 'precios_recibidos', 'precio_al_vendedor', 'cerrada'].includes(t.estado)) {
+    out.reventasPrecios = await sbGet('reventas_precios',
+      `?tasacion_id=eq.${t.id}&ronda=eq.${t.ronda_actual}&order=precio.desc&select=*,reventa:reventa_id(nombre,usuario)`);
+  }
+  return out;
+}
+
+// Re-renderiza el modal completo desde detalleActual (al cambiar descuento/ganador o cancelar un form)
+function rerenderDetalle() {
+  document.getElementById('detalleModal').innerHTML =
+    renderDetalleHTML(detalleActual.t, detalleActual.modo);
+}
+
+// ── Router de acciones según estado ──
+function renderAccionesAdmin(t) {
+  switch (t.estado) {
+    case 'pendiente_admin':   return accionesPendienteHTML();
+    case 'rebotada':          return infoSection('🔁 Rebotada — esperando que el vendedor corrija y reenvíe.', ultimoReboteHTML());
+    case 'en_reventa':
+    case 'precios_recibidos': return rankingHTML(t);
+    case 'precio_al_vendedor':return precioEnviadoHTML(t, true);
+    case 'cerrada':           return cerradaHTML(t);
+    default:                  return '';
+  }
+}
+
+function renderAccionesVendedor(t) {
+  switch (t.estado) {
+    case 'rebotada': return `
+      <div class="detalle-section">
+        <div class="detalle-section-title">🔁 El admin pidió correcciones</div>
+        ${ultimoReboteHTML()}
+        <div class="detalle-actions" style="margin-top:16px;">
+          <button class="det-btn primary" onclick="editarDesdeDetalle()">✏️ Editar y reenviar</button>
+        </div>
+      </div>`;
+    case 'pendiente_admin':   return infoSection('⏳ Enviada. Esperando revisión del admin.');
+    case 'en_reventa':
+    case 'precios_recibidos': return infoSection('🏷️ En proceso de tasación con las reventas.');
+    case 'precio_al_vendedor':return precioEnviadoHTML(t, false);
+    case 'cerrada':           return cerradaHTML(t);
+    default:                  return '';
+  }
+}
+
+function infoSection(titulo, extra = '') {
+  return `<div class="detalle-section">
+    <div class="detalle-field-value">${titulo}</div>${extra}
+  </div>`;
+}
+
+function ultimoReboteHTML() {
+  const c = (detalleActual.comentariosAdmin || [])[0];
+  if (!c) return '';
+  const campos = (c.campos_a_corregir || []).length
+    ? `<div style="margin-top:8px;"><span class="detalle-field-label">Campos a corregir:</span> ${c.campos_a_corregir.join(' · ')}</div>`
+    : '';
+  return `<div class="detalle-comment" style="margin-top:10px;">${c.comentario || '(sin nota)'}${campos}</div>`;
+}
+
+// ── 2B: Rebotar ──
+function accionesPendienteHTML() {
+  return `<div class="detalle-section" id="accionesArea">
+    <div class="detalle-section-title">⚙️ Acciones</div>
+    <div class="detalle-actions">
+      <button class="det-btn accent" onclick="mostrarFormRebote()">🔁 Rebotar al vendedor</button>
+      <button class="det-btn primary" onclick="mostrarFormReventas()">🏷️ Enviar a reventas</button>
+    </div>
+  </div>`;
+}
+
+function mostrarFormRebote() {
+  document.getElementById('accionesArea').innerHTML = `
+    <div class="detalle-section-title">🔁 Rebotar tasación</div>
+    <div class="accion-form">
+      <label class="detalle-field-label">Nota para el vendedor (qué corregir y por qué)</label>
+      <textarea id="reboteNota" placeholder="Ej: Las fotos no muestran el interior. Subí 2 más y revisá el kilometraje."></textarea>
+      <label class="detalle-field-label" style="margin-top:14px; display:block;">Campos a corregir (opcional)</label>
+      <div class="campos-corregir">
+        ${CAMPOS_CORREGIBLES.map(label => `
+          <label class="campo-check" onclick="this.classList.toggle('checked')">
+            <input type="checkbox" value="${label}"> ${label}
+          </label>`).join('')}
+      </div>
+      <div class="detalle-actions" style="margin-top:16px;">
+        <button class="det-btn ghost" onclick="rerenderDetalle()">Cancelar</button>
+        <button class="det-btn accent" onclick="confirmarRebote()">Rebotar tasación</button>
+      </div>
+    </div>`;
+}
+
+async function confirmarRebote() {
+  const nota = document.getElementById('reboteNota').value.trim();
+  const campos = [...document.querySelectorAll('#accionesArea input[type=checkbox]:checked')].map(c => c.value);
+  if (!nota && campos.length === 0) {
+    showToast('Escribí una nota o marcá al menos un campo a corregir', 'error');
+    return;
+  }
+  const t = detalleActual.t;
+  showLoading('Rebotando...');
+  try {
+    await sbPost('comentarios_admin', {
+      tasacion_id: t.id, admin_id: currentUser.id,
+      comentario: nota || null, campos_a_corregir: campos
+    });
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'rebotada' });
+    showToast('Tasación rebotada al vendedor', 'success');
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al rebotar', 'error');
+  } finally { hideLoading(); }
+}
+
+// ── 2C: Enviar a reventas ──
+function mostrarFormReventas() {
+  document.getElementById('accionesArea').innerHTML = `
+    <div class="detalle-section-title">🏷️ Enviar a reventas</div>
+    <div class="accion-form">
+      <p style="font-size:13px; color:var(--grey-4); margin-bottom:6px;">
+        Las reventas activas podrán cargar su precio de toma. No ven datos del cliente ni precios internos.</p>
+      <label class="detalle-field-label" style="margin-top:8px; display:block;">Comentario para las reventas (opcional)</label>
+      <textarea id="reventaNota" placeholder="Ej: Detalles de pintura en puerta trasera. Service al día."></textarea>
+      <div class="detalle-actions" style="margin-top:16px;">
+        <button class="det-btn ghost" onclick="rerenderDetalle()">Cancelar</button>
+        <button class="det-btn primary" onclick="confirmarEnviarReventas()">Enviar a reventas</button>
+      </div>
+    </div>`;
+}
+
+async function confirmarEnviarReventas() {
+  const nota = document.getElementById('reventaNota').value.trim();
+  const t = detalleActual.t;
+  showLoading('Enviando a reventas...');
+  try {
+    if (nota) {
+      await sbPost('comentarios_reventa', { tasacion_id: t.id, admin_id: currentUser.id, comentario: nota });
+    }
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'en_reventa' });
+    showToast('Enviada a reventas', 'success');
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al enviar a reventas', 'error');
+  } finally { hideLoading(); }
+}
+
+// ── 2D: Ranking de precios + descuento ──
+function rankingHTML(t) {
+  const precios = detalleActual.reventasPrecios || [];
+  if (precios.length === 0) {
+    return `<div class="detalle-section">
+      <div class="detalle-section-title">📊 Ranking de reventas (ronda ${t.ronda_actual})</div>
+      <div class="detalle-field-value muted">Todavía no hay precios cargados por las reventas en esta ronda.</div>
+      <div class="detalle-actions" style="margin-top:14px;">
+        <button class="det-btn outline" onclick="reenviarParaMejorar()">🔁 Nueva ronda / recordar a reventas</button>
+      </div>
+    </div>`;
+  }
+  const ganador = precios.find(p => p.id === detalleActual.ganadorId) || precios[0];
+  const desc  = detalleActual.descuentoSel;
+  const mejor = Number(ganador.precio);
+  const final = Math.round(mejor * (1 - desc / 100));
+  const gain  = mejor - final;
+  const medals = ['🥇', '🥈', '🥉'];
+
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">📊 Ranking de reventas (ronda ${t.ronda_actual} · ${precios.length} ${precios.length === 1 ? 'precio' : 'precios'})</div>
+    ${precios.map((p, i) => `
+      <label class="ranking-row ${p.id === ganador.id ? 'ganador' : ''}" onclick="seleccionarGanador('${p.id}')">
+        <input type="radio" name="ganador" ${p.id === ganador.id ? 'checked' : ''}>
+        <span class="ranking-pos">${i + 1}</span>
+        <span class="ranking-info">
+          <span class="nom">${p.reventa?.nombre || p.reventa?.usuario || 'Reventa'} ${medals[i] || ''}</span>
+          ${p.comentario ? `<span class="com">${p.comentario}</span>` : ''}
+        </span>
+        <span class="ranking-precio">${formatARS(p.precio)}</span>
+      </label>`).join('')}
+
+    <div class="detalle-field-label" style="margin-top:16px;">Descuento que se aplica al ganador</div>
+    <div class="desc-selector">
+      ${[7, 9, 12].map(d => `<div class="desc-pill ${d === desc ? 'active' : ''}" onclick="cambiarDescuento(${d})">${d}%</div>`).join('')}
+    </div>
+
+    <div class="resumen-precio">
+      <div class="rp-row"><span>Mejor oferta de reventa</span><span>${formatARS(mejor)}</span></div>
+      <div class="rp-row"><span>Descuento ${desc}%</span><span class="rp-gain">− ${formatARS(gain)}</span></div>
+      <div class="rp-row" style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.2); padding-top:10px;">
+        <span>Precio de toma al cliente</span><span class="rp-big">${formatARS(final)}</span>
+      </div>
+      <div class="rp-row"><span class="rp-muted">Margen para ArgenDreams</span><span class="rp-gain">${formatARS(gain)} (${desc}%)</span></div>
+    </div>
+
+    <div class="detalle-actions" style="margin-top:16px;">
+      <button class="det-btn outline" onclick="reenviarParaMejorar()">🔁 Reenviar para mejorar</button>
+      <button class="det-btn green" onclick="enviarPrecioVendedor()">✅ Enviar precio al vendedor</button>
+    </div>
+  </div>`;
+}
+
+function cambiarDescuento(d) { detalleActual.descuentoSel = d; rerenderDetalle(); }
+function seleccionarGanador(id) { detalleActual.ganadorId = id; rerenderDetalle(); }
+
+async function reenviarParaMejorar() {
+  const t = detalleActual.t;
+  if (!confirm(`¿Abrir una nueva ronda de reventas?\n\nLos precios de la ronda ${t.ronda_actual} quedan guardados en el histórico. Las reventas cargarán precios nuevos en la ronda ${t.ronda_actual + 1}.`)) return;
+  showLoading('Reenviando...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'en_reventa', ronda_actual: t.ronda_actual + 1 });
+    showToast('Nueva ronda abierta para reventas', 'success');
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al reenviar', 'error');
+  } finally { hideLoading(); }
+}
+
+async function enviarPrecioVendedor() {
+  const t = detalleActual.t;
+  const precios = detalleActual.reventasPrecios || [];
+  const ganador = precios.find(p => p.id === detalleActual.ganadorId) || precios[0];
+  if (!ganador) { showToast('No hay precios de reventas todavía', 'error'); return; }
+  const desc = detalleActual.descuentoSel;
+  const final = Math.round(Number(ganador.precio) * (1 - desc / 100));
+  if (!(final > 0)) { showToast('El precio final no es válido', 'error'); return; }
+  if (!confirm(`Vas a enviar al vendedor un precio de toma de ${formatARS(final)}.\n\nMejor oferta: ${formatARS(ganador.precio)}\nDescuento: ${desc}%\nMargen: ${formatARS(Number(ganador.precio) - final)}\n\n¿Confirmás?`)) return;
+  showLoading('Enviando precio...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, {
+      estado: 'precio_al_vendedor',
+      descuento_pct_admin: desc,
+      precio_final_admin: final
+    });
+    showToast('Precio enviado al vendedor', 'success');
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al enviar el precio', 'error');
+  } finally { hideLoading(); }
+}
+
+// ── Cierre (TOMADA / NO TOMADA) — admin o vendedor ──
+function precioEnviadoHTML(t, esAdmin) {
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">✅ Precio enviado al vendedor</div>
+    <div class="resumen-precio">
+      <div class="rp-row"><span>Precio de toma</span><span class="rp-big">${formatARS(t.precio_final_admin)}</span></div>
+      ${esAdmin ? `<div class="rp-row"><span class="rp-muted">Descuento aplicado</span><span>${t.descuento_pct_admin}%</span></div>` : ''}
+    </div>
+    <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">
+      ${esAdmin ? 'Esperando que el vendedor confirme con el cliente.' : 'Confirmá con el cliente y marcá el resultado.'}</p>
+    <div class="detalle-actions" style="margin-top:12px;">
+      <button class="det-btn green" onclick="cerrarTasacion('tomada')">✅ Marcar TOMADA</button>
+      <button class="det-btn red" onclick="cerrarTasacion('no_tomada')">❌ Marcar NO TOMADA</button>
+    </div>
+  </div>`;
+}
+
+function cerradaHTML(t) {
+  const tomada = t.resultado === 'tomada';
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">🗂️ Tasación cerrada</div>
+    <div class="detalle-field-value big" style="color:${tomada ? 'var(--green)' : 'var(--red)'};">
+      ${tomada ? '✅ TOMADA' : '❌ NO TOMADA'}
+    </div>
+    ${t.precio_final_admin ? `
+      <div class="detalle-field-label" style="margin-top:8px;">Precio de toma</div>
+      <div class="detalle-field-value">${formatARS(t.precio_final_admin)} (desc. ${t.descuento_pct_admin}%)</div>` : ''}
+  </div>`;
+}
+
+async function cerrarTasacion(resultado) {
+  const t = detalleActual.t;
+  const label = resultado === 'tomada' ? 'TOMADA' : 'NO TOMADA';
+  if (!confirm(`¿Marcar esta tasación como ${label}?`)) return;
+  showLoading('Cerrando...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'cerrada', resultado });
+    showToast(`Tasación cerrada (${label})`, 'success');
+    const modo = detalleActual.modo;
+    cerrarDetalle();
+    if (modo === 'admin') await loadAdminTasaciones();
+    else await loadMisTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al cerrar la tasación', 'error');
+  } finally { hideLoading(); }
+}
+
+function editarDesdeDetalle() {
+  const t = detalleActual.t;
+  cerrarDetalle();
+  cargarTasacionParaEdicion(t);
 }
 
 function cargarTasacionParaEdicion(t) {
