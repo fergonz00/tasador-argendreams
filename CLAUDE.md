@@ -106,7 +106,7 @@ Carga un único campo: **precio de toma** (en ARS).
 
 **Acciones según estado (2B/2C/2D) — el modal renderiza acciones distintas por `t.estado`:**
 - `pendiente_admin` → botones **🔁 Rebotar** y **🏷️ Enviar a reventas**
-  - **2B Rebotar**: form con textarea (nota) + checkboxes de campos a corregir (labels legibles) → `INSERT comentarios_admin` + `PATCH estado='rebotada'`
+  - **2B Rebotar**: form con textarea (nota) + checkboxes de campos a corregir → `INSERT comentarios_admin` + `PATCH estado='rebotada'`. Los campos (`CAMPOS_CORREGIBLES`) están mapeados 1:1 a cada paso del wizard (`{label, step}`). Cuando el vendedor edita la rebotada, `_stepHeader` muestra un **banner rojo "El admin pidió corregir esto: X"** en la solapa correspondiente (global `camposACorregir`, cargado del último rebote)
   - **2C Enviar a reventas**: form con comentario opcional → `INSERT comentarios_reventa` (si hay) + `PATCH estado='en_reventa'`. **No** se pre-crean filas en `reventas_precios` (precio es NOT NULL; cada reventa inserta la suya al cargar precio)
 - `en_reventa` / `precios_recibidos` → **2D Ranking**: filas de `reventas_precios` de `ronda_actual` ordenadas por precio desc, radio para elegir ganador (default el más alto), selector de descuento 7/9/12% (default `descuento_pct_admin`), resumen con precio de toma final = `mejor × (1−desc/100)` + margen. Botones **🔁 Reenviar para mejorar** (`ronda_actual+1`, vuelve a `en_reventa`, histórico preservado por la columna `ronda`) y **✅ Enviar precio al vendedor** (`PATCH estado='precio_al_vendedor', precio_final_admin, descuento_pct_admin`)
 - `precio_al_vendedor` → muestra precio enviado + botones **TOMADA / NO TOMADA** (`PATCH estado='cerrada', resultado`)
