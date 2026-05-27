@@ -2343,7 +2343,8 @@ async function abrirDetalle(t, modo) {
       comentariosReventa: rel.comentariosReventa,
       miPrecio: rel.miPrecio,
       descuentoSel: Number(t.descuento_pct_admin) || 9,
-      ganadorId: rel.reventasPrecios.length ? rel.reventasPrecios[0].id : null
+      ganadorId: rel.reventasPrecios.length ? rel.reventasPrecios[0].id : null,
+      vistaMejora: false
     };
     document.getElementById('detalleModal').innerHTML = renderDetalleHTML(t, modo);
     document.getElementById('detalleOverlay').classList.add('active');
@@ -2392,7 +2393,7 @@ function renderAccionesAdmin(t) {
     case 'pendiente_admin':   return accionesPendienteHTML();
     case 'rebotada':          return infoSection('🔁 Rebotada — esperando que el vendedor corrija y reenvíe.', ultimoReboteHTML());
     case 'en_reventa':
-    case 'precios_recibidos': return rankingHTML(t);
+    case 'precios_recibidos': return detalleActual.vistaMejora ? formMejoraHTML(t) : rankingHTML(t);
     case 'precio_al_vendedor':return precioEnviadoHTML(t, true);
     case 'cerrada':           return cerradaHTML(t);
     default:                  return '';
@@ -2525,11 +2526,8 @@ function rankingHTML(t) {
   const precios = detalleActual.reventasPrecios || [];
   if (precios.length === 0) {
     return `<div class="detalle-section">
-      <div class="detalle-section-title">📊 Ranking de reventas (ronda ${t.ronda_actual})</div>
-      <div class="detalle-field-value muted">Todavía no hay precios cargados por las reventas en esta ronda.</div>
-      <div class="detalle-actions" style="margin-top:14px;">
-        <button class="det-btn outline" onclick="reenviarParaMejorar()">🔁 Nueva ronda / recordar a reventas</button>
-      </div>
+      <div class="detalle-section-title">📊 Ranking de reventas</div>
+      <div class="detalle-field-value muted">Todavía no hay precios cargados por las reventas. Las reventas ya la ven en su panel para tasar.</div>
     </div>`;
   }
   const ganador = precios.find(p => p.id === detalleActual.ganadorId) || precios[0];
@@ -2540,7 +2538,7 @@ function rankingHTML(t) {
   const medals = ['🥇', '🥈', '🥉'];
 
   return `<div class="detalle-section">
-    <div class="detalle-section-title">📊 Ranking de reventas (ronda ${t.ronda_actual} · ${precios.length} ${precios.length === 1 ? 'precio' : 'precios'})</div>
+    <div class="detalle-section-title">📊 Ranking de reventas (${precios.length} ${precios.length === 1 ? 'precio' : 'precios'})</div>
     ${precios.map((p, i) => `
       <label class="ranking-row ${p.id === ganador.id ? 'ganador' : ''}" onclick="seleccionarGanador('${p.id}')">
         <input type="radio" name="ganador" ${p.id === ganador.id ? 'checked' : ''}>
@@ -2567,7 +2565,7 @@ function rankingHTML(t) {
     </div>
 
     <div class="detalle-actions" style="margin-top:16px;">
-      <button class="det-btn outline" onclick="reenviarParaMejorar()">🔁 Reenviar para mejorar</button>
+      <button class="det-btn outline" onclick="abrirFormMejora()">📈 Pedir mejora a reventas</button>
       <button class="det-btn green" onclick="enviarPrecioVendedor()">✅ Enviar precio al vendedor</button>
     </div>
   </div>`;
@@ -2576,17 +2574,45 @@ function rankingHTML(t) {
 function cambiarDescuento(d) { detalleActual.descuentoSel = d; rerenderDetalle(); }
 function seleccionarGanador(id) { detalleActual.ganadorId = id; rerenderDetalle(); }
 
-async function reenviarParaMejorar() {
-  const t = detalleActual.t;
-  if (!confirm(`¿Abrir una nueva ronda de reventas?\n\nLos precios de la ronda ${t.ronda_actual} quedan guardados en el histórico. Las reventas cargarán precios nuevos en la ronda ${t.ronda_actual + 1}.`)) return;
-  showLoading('Reenviando...');
+// Pedido de mejora DIRIGIDO: el admin elige a qué reventas pedirles mejor precio
+function abrirFormMejora() { detalleActual.vistaMejora = true; rerenderDetalle(); }
+function cancelarFormMejora() { detalleActual.vistaMejora = false; rerenderDetalle(); }
+
+function formMejoraHTML(t) {
+  const precios = detalleActual.reventasPrecios || [];
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">📈 Pedir mejora de precio</div>
+    <p style="font-size:13px; color:var(--grey-4); margin-bottom:10px;">Elegí a qué reventas pedirles que mejoren su oferta. <strong>Solo a las seleccionadas</strong> les llega el aviso; las demás quedan con su precio actual.</p>
+    <div id="mejoraList">
+      ${precios.map(p => `
+        <label class="ranking-row" onclick="this.classList.toggle('ganador')">
+          <input type="checkbox" value="${p.id}" style="width:18px;height:18px;accent-color:var(--accent);">
+          <span class="ranking-info">
+            <span class="nom">${p.reventa?.nombre || p.reventa?.usuario || 'Reventa'}${p.mejora_solicitada ? ' · 📈 ya pedido' : ''}</span>
+          </span>
+          <span class="ranking-precio">${formatARS(p.precio)}</span>
+        </label>`).join('')}
+    </div>
+    <div class="detalle-actions" style="margin-top:14px;">
+      <button class="det-btn ghost" onclick="cancelarFormMejora()">Cancelar</button>
+      <button class="det-btn accent" onclick="confirmarPedidoMejora()">📨 Pedir mejora a seleccionadas</button>
+    </div>
+  </div>`;
+}
+
+async function confirmarPedidoMejora() {
+  const ids = [...document.querySelectorAll('#mejoraList input[type=checkbox]:checked')].map(c => c.value);
+  if (!ids.length) { showToast('Elegí al menos una reventa', 'error'); return; }
+  showLoading('Enviando pedido de mejora...');
   try {
-    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'en_reventa', ronda_actual: t.ronda_actual + 1 });
-    showToast('Nueva ronda abierta para reventas', 'success');
+    for (const id of ids) {
+      await sbPatch('reventas_precios', `?id=eq.${id}`, { mejora_solicitada: true });
+    }
+    showToast(`Pedido de mejora enviado a ${ids.length} reventa${ids.length > 1 ? 's' : ''}`, 'success');
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) {
-    console.error(e); showToast('Error al reenviar', 'error');
+    console.error(e); showToast('Error al pedir mejora', 'error');
   } finally { hideLoading(); }
 }
 
@@ -2689,7 +2715,7 @@ async function loadReventaTasaciones() {
       `?${orFiltro}&order=created_at.desc&select=${sel}`);
     // Mis precios (de cualquier ronda) para saber cuáles ya tasé
     const precios = await sbGet('reventas_precios',
-      `?reventa_id=eq.${currentUser.id}&select=tasacion_id,ronda,precio,comentario`);
+      `?reventa_id=eq.${currentUser.id}&select=tasacion_id,ronda,precio,comentario,mejora_solicitada`);
     reventaMisPrecios = {};
     precios.forEach(p => { reventaMisPrecios[`${p.tasacion_id}_${p.ronda}`] = p; });
     renderReventaTasaciones();
@@ -2703,6 +2729,8 @@ function _miPrecioDe(t) { return reventaMisPrecios[`${t.id}_${t.ronda_actual}`] 
 function _esActivaReventa(t) { return ['en_reventa', 'precios_recibidos'].includes(t.estado); }
 function _gane(t) { return t.reventa_ganadora_id === currentUser.id; }
 
+function _mejoraPedida(t) { const mp = _miPrecioDe(t); return !!(mp && mp.mejora_solicitada); }
+
 // Badge de estado para la card de reventa
 function _badgeReventa(t) {
   const mp = _miPrecioDe(t);
@@ -2712,6 +2740,7 @@ function _badgeReventa(t) {
     return { txt: '🗂️ Cerrada', bg: 'var(--grey-2)', fg: 'var(--grey-4)' };
   if (t.estado === 'precio_al_vendedor' && _gane(t))
     return { txt: '🏆 Seleccionado', bg: '#dbeafe', fg: '#1e40af' };
+  if (_mejoraPedida(t)) return { txt: '📈 Mejorá tu precio', bg: 'var(--red-light)', fg: 'var(--accent)' };
   if (mp) return { txt: '✅ Tasado', bg: 'var(--green-light)', fg: 'var(--green)' };
   return { txt: '⏳ Por tasar', bg: 'var(--orange-light)', fg: 'var(--orange)' };
 }
@@ -2719,8 +2748,9 @@ function _badgeReventa(t) {
 function renderReventaTasaciones() {
   const list = document.getElementById('reventaList');
   let arr = reventaTasacionesData;
-  if (reventaFiltro === 'por_tasar')         arr = arr.filter(t => _esActivaReventa(t) && !_miPrecioDe(t));
-  else if (reventaFiltro === 'ya_tase')      arr = arr.filter(t => _esActivaReventa(t) && _miPrecioDe(t));
+  // "Por tasar" = necesita acción: sin precio O le pidieron mejora
+  if (reventaFiltro === 'por_tasar')         arr = arr.filter(t => _esActivaReventa(t) && (!_miPrecioDe(t) || _mejoraPedida(t)));
+  else if (reventaFiltro === 'ya_tase')      arr = arr.filter(t => _esActivaReventa(t) && _miPrecioDe(t) && !_mejoraPedida(t));
   else if (reventaFiltro === 'seleccionadas') arr = arr.filter(t => !_esActivaReventa(t));
 
   if (!arr.length) {
@@ -2789,6 +2819,7 @@ function renderAccionesReventa(t) {
   // Activa (en_reventa / precios_recibidos): cargar/actualizar precio
   return `<div class="detalle-section" style="border:none;">
     <div class="detalle-section-title">💰 Tu precio de toma</div>
+    ${mp && mp.mejora_solicitada ? `<div class="detalle-comment" style="margin-bottom:10px; background:var(--red-light); border-color:var(--accent); color:var(--accent);">📈 El admin te pide que <strong>mejores tu precio</strong> para esta unidad.</div>` : ''}
     ${mp ? `<div class="detalle-field-value muted" style="margin-bottom:8px;">Ya cargaste ${formatARS(mp.precio)}. Podés actualizarlo.</div>` : ''}
     <div class="accion-form">
       <label class="detalle-field-label">Precio de toma (ARS)</label>
@@ -2814,7 +2845,7 @@ async function guardarPrecioReventa(id) {
     if (detalleActual.miPrecio) {
       await sbPatch('reventas_precios',
         `?tasacion_id=eq.${id}&reventa_id=eq.${currentUser.id}&ronda=eq.${ronda}`,
-        { precio, comentario: comentario || null });
+        { precio, comentario: comentario || null, mejora_solicitada: false });
     } else {
       await sbPost('reventas_precios',
         { tasacion_id: id, reventa_id: currentUser.id, ronda, precio, comentario: comentario || null });
