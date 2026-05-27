@@ -2229,9 +2229,9 @@ function renderDetalleHTML(t, modo) {
                 <div class="detalle-field">
                   <div class="detalle-field-label">${bydDesc < 0 ? 'Sobreprecio vs lista' : 'Descuento sobre lista'}</div>
                   <div class="detalle-field-value big" style="color:${bydDesc < 0 ? 'var(--orange)' : 'var(--green)'};">
-                    ${bydDesc < 0 ? '⚠️ ' : ''}${formatUSD(Math.abs(Math.round(bydLista - t.precio_ofrecido_cliente)))}
+                    ${bydDesc < 0 ? '⚠️ ' : ''}${fmtPct(bydDesc)}%
                   </div>
-                  <div class="detalle-field-label" style="margin-top:2px; text-transform:none; letter-spacing:0;">${fmtPct(bydDesc)}% sobre lista</div>
+                  <div class="detalle-field-label" style="margin-top:2px; text-transform:none; letter-spacing:0;">${formatUSD(Math.abs(Math.round(bydLista - t.precio_ofrecido_cliente)))}</div>
                 </div>` : ''}
             </div>
           ` : ''}
