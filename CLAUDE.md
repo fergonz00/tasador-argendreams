@@ -75,20 +75,22 @@ CERRADA (resultado: tomada | no_tomada)
 
 **Todas las validaciones son obligatorias.** No deja avanzar si no se completó el paso.
 
-## Modelos BYD hardcodeados (al 2026-05)
+## Modelos BYD hardcodeados + precio de lista USD (al 2026-05)
 
 ```js
 const BYD_MODELOS_HARDCODED = [
-  { modelo: 'DOLPHIN MINI 5P 75CV 55KW',           versiones: ['GL', 'GS'] },
-  { modelo: 'SONG PRO 5P DMI PLUG-IN HYBRID',      versiones: ['GL', 'GS'] },
-  { modelo: 'YUAN PRO 5P 94CV 70KW',               versiones: ['GL'] },
-  { modelo: 'YUAN PRO 5P 174CV 130KW',             versiones: ['GS'] },
-  { modelo: 'ATTO 2 5P DMI PLUG-IN HYBRID',        versiones: ['GS'] },
-  { modelo: 'SHARK D/C 1.5T DMO PHEV',             versiones: ['GS'] }
+  { modelo: 'DOLPHIN MINI 5P 75CV 55KW',      versiones: ['GL','GS'], precios: { GL: 23990, GS: 24990 } },
+  { modelo: 'SONG PRO 5P DMI PLUG-IN HYBRID', versiones: ['GL','GS'], precios: { GL: 35490, GS: 37490 } },
+  { modelo: 'YUAN PRO 5P 94CV 70KW',          versiones: ['GL'],      precios: { GL: 30900 } },
+  { modelo: 'YUAN PRO 5P 174CV 130KW',        versiones: ['GS'],      precios: { GS: 31900 } },
+  { modelo: 'ATTO 2 5P DMI PLUG-IN HYBRID',   versiones: ['GS'],      precios: { GS: 33990 } },
+  { modelo: 'SHARK D/C 1.5T DMO PHEV',        versiones: ['GS'],      precios: { GS: 59900 } }
 ];
 ```
 
-**Pendiente:** Fer va a armar una sheet propia con precios oficiales. Cuando esté, reemplazar el hardcoded por fetch + parseo (ver `supabase/sheet-byd-template.md`).
+- Precios de lista en **USD** (de la hoja "precios vigentes" de Fer, sheet `1wkg22RKITsjBZOZWuke6R8saSmg3GaGDrGcUQ8tSpVU`). **Esa sheet NO se lee en vivo** porque contiene datos de clientes (bloque ADOP) — por eso se hardcodean los 8 números. Para actualizar: cambiar los valores en `precios`.
+- **Descuento del BYD** (commits `a2f6044`/`b78746e`): `getBydPrecioLista()` + `calcDescuentoBYD()`. Se muestra el **monto en USD + %** (ej: lista 23990 − ofrecido 23000 → "USD 990 de descuento (4,1%)") en el paso 10 en vivo y en el detalle admin/vendedor. `byd_precio_lista` se snapshotea al enviar; tasaciones viejas sin snapshot usan lookup vivo.
+- Si en el futuro se quiere lectura en vivo, armar una sheet **separada solo-precios** y publicarla (ver `supabase/sheet-byd-template.md`).
 
 ## Vista de Reventa (lo que SÍ y NO ve) — PENDIENTE
 
