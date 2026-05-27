@@ -2739,8 +2739,8 @@ async function verDetalleReventa(id) {
 function renderAccionesReventa(t) {
   const mp = detalleActual.miPrecio;
   return `<div class="detalle-section" style="border:none;">
-    <div class="detalle-section-title">💰 Tu precio de toma (ronda ${t.ronda_actual})</div>
-    ${mp ? `<div class="detalle-field-value muted" style="margin-bottom:8px;">Ya cargaste ${formatARS(mp.precio)} en esta ronda. Podés actualizarlo.</div>` : ''}
+    <div class="detalle-section-title">💰 Tu precio de toma</div>
+    ${mp ? `<div class="detalle-field-value muted" style="margin-bottom:8px;">Ya cargaste ${formatARS(mp.precio)}. Podés actualizarlo.</div>` : ''}
     <div class="accion-form">
       <label class="detalle-field-label">Precio de toma (ARS)</label>
       <input type="number" id="reventaPrecio" class="byd-in" min="0" step="10000" value="${mp ? mp.precio : ''}" placeholder="Ej. 15000000" style="margin-top:6px;">
