@@ -539,6 +539,49 @@ input, select, textarea { font-family: var(--font); }
 .byd-card-actions { display: flex; gap: 8px; margin-top: 12px; }
 .byd-card-actions .det-btn { flex: 0 0 auto; min-width: 0; padding: 8px 14px; font-size: 13px; }
 
+/* ─── BANNER IMPERSONATION ─── */
+.imperson-banner {
+  background: var(--accent); color: white;
+  padding: 10px 16px; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; font-size: 13px; font-weight: 600; flex-wrap: wrap;
+}
+.imperson-banner button {
+  background: white; color: var(--accent); border-radius: 8px;
+  padding: 6px 12px; font-size: 13px; font-weight: 700;
+}
+
+/* ─── GESTIÓN USUARIOS ─── */
+.usr-card {
+  background: white; border: 1.5px solid var(--grey-2); border-radius: 10px;
+  padding: 14px; margin-bottom: 10px; box-shadow: var(--shadow);
+}
+.usr-card.inactivo { opacity: 0.6; border-style: dashed; }
+.usr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.usr-nombre { font-weight: 700; color: var(--primary); font-size: 15px; }
+.usr-sub { font-size: 12px; color: var(--grey-4); margin-top: 2px; }
+.usr-rol-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 12px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+}
+.rol-admin    { background: #dbeafe; color: #1e40af; }
+.rol-vendedor { background: var(--green-light); color: var(--green); }
+.rol-reventa  { background: var(--orange-light); color: var(--orange); }
+.usr-god { font-size: 10px; color: var(--accent); font-weight: 700; margin-left: 6px; }
+.usr-flags { font-size: 11px; margin-top: 4px; }
+.usr-flag-inactivo { color: var(--red); font-weight: 600; }
+.usr-flag-cambiar  { color: var(--orange); font-weight: 600; }
+.usr-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.usr-actions .det-btn { flex: 0 0 auto; min-width: 0; padding: 7px 12px; font-size: 13px; }
+
+/* Modal usuario: labels y select */
+.modal label.usr-lbl { display: block; font-size: 12px; color: var(--grey-4); margin: 8px 0 3px; font-weight: 600; }
+.modal select {
+  width: 100%; padding: 12px 14px; border: 2px solid var(--grey-2);
+  border-radius: 8px; font-size: 14px; margin-bottom: 12px; outline: none; background: white;
+}
+.modal label.usr-check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 6px 0 12px; cursor: pointer; }
+.modal label.usr-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--green); }
+
 </style>
 </head>
 <body>
@@ -566,10 +609,14 @@ input, select, textarea { font-family: var(--font); }
     </div>
     <div class="header-actions">
       <span class="user-info" id="headerUser"></span>
+      <button id="btnConfig" style="display:none" onclick="abrirConfig()">⚙️ Configuración</button>
       <button id="btnCambiarModo" style="display:none" onclick="volverSelectorModo()">🔄 Cambiar modo</button>
       <button onclick="salir()">Salir</button>
     </div>
   </header>
+
+  <!-- BANNER IMPERSONATION (superadmin viendo como otro) -->
+  <div id="impersonateBanner" class="imperson-banner" style="display:none;"></div>
 
   <!-- VISTA: SELECTOR DE MODO (solo admins) -->
   <div class="view" id="modoSelectorView">
@@ -615,9 +662,6 @@ input, select, textarea { font-family: var(--font); }
 
   <!-- VISTA ADMIN -->
   <div class="view" id="adminView">
-    <div id="adminSuperadminBar" style="display:none; margin-bottom:12px;">
-      <button class="det-btn outline" style="flex:0 0 auto; min-width:0;" onclick="abrirGestionByd()">⚙️ Gestionar modelos BYD</button>
-    </div>
     <div class="filtros-bar" id="adminFiltros">
       <button class="filtro-pill active" onclick="filtrarAdminTasaciones(this,'pendiente_admin')">⏳ Pendientes</button>
       <button class="filtro-pill" onclick="filtrarAdminTasaciones(this,'rebotada')">🔁 Rebotadas</button>
@@ -635,18 +679,34 @@ input, select, textarea { font-family: var(--font); }
     <div class="detalle-modal" id="detalleModal"></div>
   </div>
 
-  <!-- VISTA GESTIÓN MODELOS BYD (solo superadmin) -->
-  <div class="view" id="gestionBydView">
-    <div style="display:flex; align-items:center; gap:12px; margin-bottom:6px;">
-      <button class="det-btn ghost" onclick="cerrarGestionByd()">← Volver</button>
-      <h2 style="font-size:18px; color:var(--primary);">⚙️ Modelos BYD y precios de lista</h2>
+  <!-- VISTA CONFIGURACIÓN (solo superadmin) -->
+  <div class="view" id="configView">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+      <button class="det-btn ghost" onclick="cerrarConfig()">← Volver</button>
+      <h2 style="font-size:18px; color:var(--primary);">⚙️ Configuración</h2>
     </div>
-    <p style="font-size:13px; color:var(--grey-4); margin-bottom:16px;">
-      Cada fila es un <strong>modelo + versión</strong> con su precio de lista en USD. Si un modelo tiene varias versiones (GL/GS), vas a ver una fila por versión. Los cambios afectan tasaciones nuevas; las ya cargadas conservan su precio.
-    </p>
-    <div id="gestionBydList"></div>
-    <div style="margin-top:16px;">
-      <button class="det-btn primary" style="flex:0 0 auto; min-width:0;" onclick="agregarModeloByd()">➕ Agregar modelo / versión</button>
+    <div class="tabs-nav">
+      <button class="tab-btn active" id="cfgTabUsuarios" onclick="cambiarTabConfig('usuarios')">👤 Usuarios</button>
+      <button class="tab-btn" id="cfgTabModelos" onclick="cambiarTabConfig('modelos')">⚡ Modelos BYD</button>
+    </div>
+
+    <!-- Tab Usuarios -->
+    <div id="configTabUsuarios" class="config-tab">
+      <div style="margin:14px 0;">
+        <button class="det-btn primary" style="flex:0 0 auto; min-width:0;" onclick="abrirNuevoUsuario()">➕ Nuevo usuario</button>
+      </div>
+      <div id="usuariosList" class="tas-list"></div>
+    </div>
+
+    <!-- Tab Modelos BYD -->
+    <div id="configTabModelos" class="config-tab" style="display:none;">
+      <p style="font-size:13px; color:var(--grey-4); margin:14px 0 16px;">
+        Cada fila es un <strong>modelo + versión</strong> con su precio de lista en USD. Si un modelo tiene varias versiones (GL/GS), vas a ver una fila por versión. Los cambios afectan tasaciones nuevas; las ya cargadas conservan su precio.
+      </p>
+      <div id="gestionBydList"></div>
+      <div style="margin-top:16px;">
+        <button class="det-btn primary" style="flex:0 0 auto; min-width:0;" onclick="agregarModeloByd()">➕ Agregar modelo / versión</button>
+      </div>
     </div>
   </div>
 
@@ -675,6 +735,11 @@ input, select, textarea { font-family: var(--font); }
       <button class="secondary" onclick="salir()">Salir</button>
     </div>
   </div>
+</div>
+
+<!-- ═══════════════════════ MODAL USUARIO (alta/edición/reset) ═══════════════════════ -->
+<div class="modal-backdrop" id="usuarioModal">
+  <div class="modal" id="usuarioModalContent"></div>
 </div>
 
 <!-- ═══════════════════════ LOADING ═══════════════════════ -->
@@ -848,6 +913,7 @@ async function continuarLogin() {
   document.getElementById('app').style.display = 'block';
   document.getElementById('headerUser').textContent = `${currentUser.nombre} · ${currentUser.rol}`;
   document.getElementById('btnCambiarModo').style.display = 'none';
+  document.getElementById('btnConfig').style.display = _esSuperadmin() ? 'inline-block' : 'none';
 
   // Despachar a la vista según el rol
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -883,11 +949,11 @@ function selectMode(mode) {
   currentMode = mode;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('btnCambiarModo').style.display = 'inline-block';
+  document.getElementById('btnConfig').style.display = _esSuperadmin() ? 'inline-block' : 'none';
 
   if (mode === 'admin') {
     document.getElementById('adminView').classList.add('active');
     document.getElementById('headerUser').textContent = `${currentUser.nombre} · Modo Admin`;
-    document.getElementById('adminSuperadminBar').style.display = _esSuperadmin() ? 'block' : 'none';
     loadAdminTasaciones();
   } else if (mode === 'vendedor') {
     document.getElementById('vendedorView').classList.add('active');
@@ -902,15 +968,19 @@ function volverSelectorModo() {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('modoSelectorView').classList.add('active');
   document.getElementById('btnCambiarModo').style.display = 'none';
+  document.getElementById('btnConfig').style.display = _esSuperadmin() ? 'inline-block' : 'none';
   document.getElementById('headerUser').textContent = `${currentUser.nombre} · ${currentUser.rol}`;
 }
 
 function salir() {
   currentUser = null;
   currentMode = null;
+  _impersonating = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('modalCambioClave').classList.remove('active');
   document.getElementById('btnCambiarModo').style.display = 'none';
+  document.getElementById('btnConfig').style.display = 'none';
+  document.getElementById('impersonateBanner').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('loginUser').value = '';
   document.getElementById('loginPass').value = '';
@@ -2535,20 +2605,244 @@ function editarDesdeDetalle() {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// GESTIÓN DE MODELOS BYD — solo superadmin (fngonzalez)
+// CONFIGURACIÓN — solo superadmin (fngonzalez): Usuarios + Modelos BYD
 // ═════════════════════════════════════════════════════════════════
-async function abrirGestionByd() {
-  if (!_esSuperadmin()) { showToast('Solo el administrador total puede gestionar modelos', 'error'); return; }
+function abrirConfig() {
+  if (!_esSuperadmin()) { showToast('Solo el administrador total puede entrar a Configuración', 'error'); return; }
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('configView').classList.add('active');
+  cambiarTabConfig('usuarios');
+}
+
+function cerrarConfig() {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  if (currentMode === 'vendedor')   document.getElementById('vendedorView').classList.add('active');
+  else if (currentMode === 'admin') document.getElementById('adminView').classList.add('active');
+  else                              document.getElementById('modoSelectorView').classList.add('active');
+}
+
+function cambiarTabConfig(tab) {
+  document.querySelectorAll('#configView .tab-btn').forEach(b => b.classList.remove('active'));
+  const esU = tab === 'usuarios';
+  document.getElementById('configTabUsuarios').style.display = esU ? 'block' : 'none';
+  document.getElementById('configTabModelos').style.display  = esU ? 'none' : 'block';
+  document.getElementById(esU ? 'cfgTabUsuarios' : 'cfgTabModelos').classList.add('active');
+  if (esU) loadUsuarios();
+  else cargarYRenderModelos();
+}
+
+async function cargarYRenderModelos() {
   showLoading('Cargando modelos...');
   try { await loadBydModelos(); } finally { hideLoading(); }
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById('gestionBydView').classList.add('active');
   renderGestionByd();
 }
 
-function cerrarGestionByd() {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById('adminView').classList.add('active');
+// ─── USUARIOS ───
+let usuariosData = [];
+
+async function loadUsuarios() {
+  const list = document.getElementById('usuariosList');
+  list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando usuarios...</div>';
+  try {
+    usuariosData = await sbGet('usuarios', '?select=id,usuario,nombre,rol,activo,debe_cambiar_clave,telefono_wa&order=usuario.asc');
+    renderUsuarios();
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⚠️</span>Error cargando usuarios.</div>';
+  }
+}
+
+function _rolBadge(rol) {
+  const label = { admin: 'Admin', vendedor: 'Vendedor', reventa: 'Reventa' }[rol] || rol;
+  return `<span class="usr-rol-badge rol-${rol}">${label}</span>`;
+}
+
+function renderUsuarios() {
+  const list = document.getElementById('usuariosList');
+  if (!usuariosData.length) { list.innerHTML = '<div class="tas-list-empty"><span class="emoji">👤</span>No hay usuarios.</div>'; return; }
+  list.innerHTML = usuariosData.map(u => {
+    const esGod = SUPERADMINS_USUARIOS.includes(u.usuario);
+    const esYo  = currentUser && u.usuario === currentUser.usuario;
+    return `<div class="usr-card ${u.activo ? '' : 'inactivo'}">
+      <div class="usr-top">
+        <div>
+          <div class="usr-nombre">${u.usuario}${esGod ? '<span class="usr-god">★ GOD</span>' : ''}</div>
+          <div class="usr-sub">${u.nombre || '—'}${u.telefono_wa ? ' · 📱 ' + u.telefono_wa : ''}</div>
+          <div class="usr-flags">
+            ${!u.activo ? '<span class="usr-flag-inactivo">● Inactivo</span> ' : ''}
+            ${u.debe_cambiar_clave ? '<span class="usr-flag-cambiar">⚠ Debe cambiar clave</span>' : ''}
+          </div>
+        </div>
+        ${_rolBadge(u.rol)}
+      </div>
+      <div class="usr-actions">
+        <button class="det-btn outline" onclick="abrirEditarUsuario('${u.id}')">✏️ Editar</button>
+        <button class="det-btn outline" onclick="abrirResetClave('${u.id}')">🔑 Reset clave</button>
+        ${!esYo ? `<button class="det-btn ${u.activo ? 'red' : 'green'}" onclick="toggleActivoUsuario('${u.id}', ${u.activo ? 'false' : 'true'})">${u.activo ? '⏸️ Desactivar' : '▶️ Activar'}</button>` : ''}
+        ${(!esYo && u.activo) ? `<button class="det-btn primary" onclick="entrarComoUsuario('${u.id}')">👤→ Entrar como</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+const ROLES_DISPONIBLES = [['vendedor', 'Vendedor'], ['admin', 'Administrador'], ['reventa', 'Reventa']];
+
+function abrirNuevoUsuario() { if (_esSuperadmin()) _mostrarUsuarioModal('nuevo', null); }
+function abrirEditarUsuario(id) {
+  if (!_esSuperadmin()) return;
+  const u = usuariosData.find(x => x.id === id); if (u) _mostrarUsuarioModal('editar', u);
+}
+function abrirResetClave(id) {
+  if (!_esSuperadmin()) return;
+  const u = usuariosData.find(x => x.id === id); if (u) _mostrarUsuarioModal('reset', u);
+}
+
+function _mostrarUsuarioModal(modo, u) {
+  document.getElementById('usuarioModalContent').innerHTML = usuarioModalHTML(modo, u);
+  document.getElementById('usuarioModal').classList.add('active');
+}
+function cerrarUsuarioModal() { document.getElementById('usuarioModal').classList.remove('active'); }
+function _errUsuario(msg) {
+  const e = document.getElementById('usrError');
+  if (e) { e.textContent = msg; e.style.display = 'block'; }
+}
+
+function usuarioModalHTML(modo, u) {
+  const titulo = modo === 'nuevo' ? '➕ Nuevo usuario' : modo === 'editar' ? '✏️ Editar usuario' : '🔑 Resetear clave';
+  if (modo === 'reset') {
+    return `<h2>${titulo}</h2>
+      <p class="sub">Vas a resetear la clave de <strong>${u.usuario}</strong>. Definí una clave provisoria; el usuario la cambia en su próximo ingreso.</p>
+      <label class="usr-lbl">Clave provisoria (mín 8, con letras y números)</label>
+      <input type="text" id="usrClave" placeholder="Ej. Argen2026" autocomplete="off">
+      <div class="modal-error" id="usrError"></div>
+      <div class="modal-actions">
+        <button class="primary" onclick="guardarUsuarioModal('reset','${u.id}')">Resetear</button>
+        <button class="secondary" onclick="cerrarUsuarioModal()">Cancelar</button>
+      </div>`;
+  }
+  const esEdit = modo === 'editar';
+  return `<h2>${titulo}</h2>
+    <label class="usr-lbl">Usuario</label>
+    <input type="text" id="usrUsuario" placeholder="ej. jperez" autocomplete="off" value="${esEdit ? escAttr(u.usuario) : ''}" ${esEdit ? 'disabled style="opacity:.6"' : ''}>
+    <label class="usr-lbl">Nombre y apellido</label>
+    <input type="text" id="usrNombre" placeholder="Juan Pérez" value="${esEdit ? escAttr(u.nombre || '') : ''}">
+    ${modo === 'nuevo' ? `
+      <label class="usr-lbl">Clave provisoria (mín 8, con letras y números)</label>
+      <input type="text" id="usrClave" placeholder="Ej. Argen2026" autocomplete="off">` : ''}
+    <label class="usr-lbl">Rol</label>
+    <select id="usrRol">
+      ${ROLES_DISPONIBLES.map(([v, l]) => `<option value="${v}" ${esEdit && u.rol === v ? 'selected' : ''}>${l}</option>`).join('')}
+    </select>
+    <label class="usr-lbl">Teléfono WhatsApp (opcional, formato 549...)</label>
+    <input type="text" id="usrTelWA" placeholder="5493815551234" value="${esEdit ? escAttr(u.telefono_wa || '') : ''}">
+    ${esEdit ? `<label class="usr-check"><input type="checkbox" id="usrActivo" ${u.activo ? 'checked' : ''}> Usuario activo</label>` : ''}
+    <div class="modal-error" id="usrError"></div>
+    <div class="modal-actions">
+      <button class="primary" onclick="guardarUsuarioModal('${modo}','${esEdit ? u.id : ''}')">Guardar</button>
+      <button class="secondary" onclick="cerrarUsuarioModal()">Cancelar</button>
+    </div>`;
+}
+
+async function guardarUsuarioModal(modo, id) {
+  if (!_esSuperadmin()) return;
+  if (modo === 'reset') {
+    const clave = (document.getElementById('usrClave').value || '').trim();
+    const v = validarClaveUsuario(clave);
+    if (!v.ok) return _errUsuario(v.msg);
+    showLoading('Reseteando clave...');
+    try {
+      await sbPatch('usuarios', `?id=eq.${id}`, { clave, debe_cambiar_clave: true });
+      cerrarUsuarioModal();
+      showToast('Clave reseteada. Anotala y pasásela al usuario.', 'success');
+      await loadUsuarios();
+    } catch (e) { console.error(e); _errUsuario('Error al resetear'); }
+    finally { hideLoading(); }
+    return;
+  }
+
+  const nombre = (document.getElementById('usrNombre').value || '').trim();
+  const rol    = document.getElementById('usrRol').value;
+  const telWa  = (document.getElementById('usrTelWA').value || '').trim();
+  if (!nombre) return _errUsuario('El nombre es obligatorio');
+
+  if (modo === 'nuevo') {
+    const usuario = (document.getElementById('usrUsuario').value || '').trim().toLowerCase();
+    const clave   = (document.getElementById('usrClave').value || '').trim();
+    if (!usuario) return _errUsuario('El usuario es obligatorio');
+    if (/\s/.test(usuario)) return _errUsuario('El usuario no puede tener espacios');
+    const vc = validarClaveUsuario(clave);
+    if (!vc.ok) return _errUsuario(vc.msg);
+    if (usuariosData.some(x => x.usuario === usuario)) return _errUsuario('Ya existe un usuario con ese nombre');
+    showLoading('Creando usuario...');
+    try {
+      await sbPost('usuarios', { usuario, nombre, clave, rol, telefono_wa: telWa || null, activo: true, debe_cambiar_clave: true });
+      cerrarUsuarioModal();
+      showToast('Usuario creado', 'success');
+      await loadUsuarios();
+    } catch (e) { console.error(e); _errUsuario('Error al crear (¿usuario repetido?)'); }
+    finally { hideLoading(); }
+  } else { // editar
+    const activo = document.getElementById('usrActivo').checked;
+    showLoading('Guardando...');
+    try {
+      await sbPatch('usuarios', `?id=eq.${id}`, { nombre, rol, telefono_wa: telWa || null, activo });
+      cerrarUsuarioModal();
+      showToast('Usuario actualizado', 'success');
+      await loadUsuarios();
+    } catch (e) { console.error(e); _errUsuario('Error al guardar'); }
+    finally { hideLoading(); }
+  }
+}
+
+async function toggleActivoUsuario(id, nuevoEstado) {
+  if (!_esSuperadmin()) return;
+  const u = usuariosData.find(x => x.id === id); if (!u) return;
+  if (!confirm(`¿Seguro que querés ${nuevoEstado ? 'activar' : 'desactivar'} al usuario "${u.usuario}"?`)) return;
+  showLoading(nuevoEstado ? 'Activando...' : 'Desactivando...');
+  try {
+    await sbPatch('usuarios', `?id=eq.${id}`, { activo: nuevoEstado });
+    showToast(nuevoEstado ? 'Usuario activado' : 'Usuario desactivado', 'success');
+    await loadUsuarios();
+  } catch (e) { console.error(e); showToast('Error al cambiar el estado', 'error'); }
+  finally { hideLoading(); }
+}
+
+// ─── IMPERSONATION (solo fngonzalez) ───
+let _impersonating = null;
+
+function entrarComoUsuario(id) {
+  if (!_esSuperadmin()) { showToast('No autorizado', 'error'); return; }
+  const u = usuariosData.find(x => x.id === id);
+  if (!u) { showToast('Usuario no encontrado', 'error'); return; }
+  if (!u.activo) { showToast('Usuario inactivo', 'error'); return; }
+  if (currentUser && u.usuario === currentUser.usuario) { showToast('Ya sos vos', 'error'); return; }
+  if (!_impersonating) _impersonating = currentUser;   // guardo al real
+  currentUser = { ...u };
+  cerrarUsuarioModal();
+  continuarLogin();              // saltea debe_cambiar_clave y despacha a la vista del rol
+  _renderImpersonateBanner();
+  showToast(`Entraste como ${u.usuario}`, 'success');
+}
+
+function volverASesionOriginal() {
+  if (!_impersonating) return;
+  currentUser = _impersonating;
+  _impersonating = null;
+  continuarLogin();
+  _renderImpersonateBanner();
+  showToast('Volviste a tu sesión', 'success');
+}
+
+function _renderImpersonateBanner() {
+  const b = document.getElementById('impersonateBanner');
+  if (_impersonating) {
+    b.innerHTML = `<span>👤 Estás viendo como <strong>${currentUser.usuario}</strong> (${currentUser.nombre} · ${currentUser.rol})</span>
+      <button onclick="volverASesionOriginal()">← Volver a ${_impersonating.usuario}</button>`;
+    b.style.display = 'flex';
+  } else {
+    b.style.display = 'none';
+    b.innerHTML = '';
+  }
 }
 
 function renderGestionByd() {
