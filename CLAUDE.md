@@ -197,14 +197,16 @@ Botón **⚙️ Configuración** en el header (al lado de "Cambiar modo"), visib
 
 - **👤 Usuarios** (réplica de tasador-tga adaptada a la tabla `usuarios`):
   - Listar (`loadUsuarios`/`renderUsuarios`) con usuario, nombre, rol badge, flags (inactivo / debe cambiar clave), `★ GOD` para superadmins.
+  - **Filtro por tipo** (`renderUsuariosFiltros`/`filtrarUsuarios`): Todos/Admin/Vendedor/Reventa con contador.
   - **Crear / Editar / Reset clave**: modal único (`usuarioModalHTML` + `guardarUsuarioModal`). Reset y alta setean `debe_cambiar_clave=true`. Roles: vendedor/admin/reventa. Campos: usuario, nombre, clave provisoria (alta), rol, telefono_wa, activo (edición).
-  - **Activar/Desactivar**: baja lógica (`toggleActivoUsuario`, no borra).
+  - **Activar/Desactivar**: baja lógica (`toggleActivoUsuario`, no borra). **Eliminar** (`eliminarUsuario`): hard delete con `sbDelete`; protege cuentas god; si hay FK (el usuario tiene actividad) sugiere desactivar.
   - **Impersonation** (`entrarComoUsuario`): guarda al superadmin en `_impersonating`, hace `currentUser = target`, llama `continuarLogin()` (saltea cambio de clave) y muestra **banner rojo fijo** (`#impersonateBanner`) con "Volver a mi sesión" (`volverASesionOriginal`). `btnConfig` se oculta mientras impersonás (dejás de ser superadmin).
 - **⚡ Modelos BYD**: el panel CRUD de `byd_modelos` (antes era vista aparte, ahora vive acá).
 
 ⚠️ Todo se valida client-side (`_esSuperadmin()`); RLS sigue OFF. Único superadmin: `SUPERADMINS_USUARIOS = ['fngonzalez']`.
 
-**Usuarios de prueba existentes** (uno por perfil): `vendedor_test` (vendedor), `agustin` (admin puro, NO god), `reventa_test_1`/`reventa_test_2` (reventa), `fngonzalez` (admin + god).
+**Usuarios reales cargados** (2026-05-27, del PDF "INFO REVENTAS, VENDEDORES, GTE" en Drive): `agustinc` (Agustín Callegaro, admin/gerente) + 10 vendedores + 7 reventas. Usuario = nombre + inicial apellido, clave genérica **`Argen2026`** (`debe_cambiar_clave=true`), teléfonos cargados (`549...`) para WhatsApp.
+**Placeholders/test que siguen** (borrables): `agustin` (admin puro, redundante con agustinc), `vendedor_test`, `reventa_test_1`/`2`, `fngonzalez` (god).
 
 ### Setup pendiente
 8. **Sheet propia BYD** con precios oficiales (reemplaza hardcoded). Plantilla en `supabase/sheet-byd-template.md`
