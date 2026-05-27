@@ -3156,6 +3156,7 @@ function renderUsuarios() {
         <button class="det-btn outline" onclick="abrirResetClave('${u.id}')">🔑 Reset clave</button>
         ${!esYo ? `<button class="det-btn ${u.activo ? 'red' : 'green'}" onclick="toggleActivoUsuario('${u.id}', ${u.activo ? 'false' : 'true'})">${u.activo ? '⏸️ Desactivar' : '▶️ Activar'}</button>` : ''}
         ${(!esYo && u.activo) ? `<button class="det-btn primary" onclick="entrarComoUsuario('${u.id}')">👤→ Entrar como</button>` : ''}
+        ${(!esYo && !esGod) ? `<button class="det-btn red" onclick="eliminarUsuario('${u.id}')">🗑️ Eliminar</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -3281,6 +3282,27 @@ async function toggleActivoUsuario(id, nuevoEstado) {
     await loadUsuarios();
   } catch (e) { console.error(e); showToast('Error al cambiar el estado', 'error'); }
   finally { hideLoading(); }
+}
+
+async function eliminarUsuario(id) {
+  if (!_esSuperadmin()) return;
+  const u = usuariosData.find(x => x.id === id); if (!u) return;
+  if (SUPERADMINS_USUARIOS.includes(u.usuario)) { showToast('No se puede eliminar al administrador total', 'error'); return; }
+  if (!confirm(`¿ELIMINAR definitivamente a "${u.usuario}" (${u.nombre})?\n\nNo se puede deshacer. Si el usuario ya tiene actividad (tasaciones/precios), mejor usá "Desactivar".`)) return;
+  showLoading('Eliminando...');
+  try {
+    await sbDelete('usuarios', `?id=eq.${id}`);
+    showToast('Usuario eliminado', 'success');
+    await loadUsuarios();
+  } catch (e) {
+    console.error(e);
+    const msg = String(e.message || '').toLowerCase();
+    if (msg.indexOf('23503') >= 0 || msg.indexOf('foreign key') >= 0 || msg.indexOf('violates') >= 0) {
+      showToast('No se puede borrar: el usuario ya tiene actividad. Usá "Desactivar".', 'error');
+    } else {
+      showToast('Error al eliminar', 'error');
+    }
+  } finally { hideLoading(); }
 }
 
 // ─── IMPERSONATION (solo fngonzalez) ───
