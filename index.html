@@ -874,8 +874,10 @@ function _waTelOK(u) {
 }
 async function _waAdmins() {
   try {
+    // notif_admin_bulk=true excluye a admins que optaron por no recibir avisos masivos
+    // (ej: Diego Kusnetzoff, admin viewer que solo quiere notifs de SUS tasaciones).
     return await sbGet('usuarios',
-      `?rol=eq.admin&activo=is.true&notificaciones_wa=is.true&telefono_wa=not.is.null&select=id,nombre,usuario,telefono_wa,activo,notificaciones_wa`);
+      `?rol=eq.admin&activo=is.true&notificaciones_wa=is.true&notif_admin_bulk=is.true&telefono_wa=not.is.null&select=id,nombre,usuario,telefono_wa,activo,notificaciones_wa`);
   } catch (e) { console.error('_waAdmins:', e); return []; }
 }
 async function _waReventas() {
