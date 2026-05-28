@@ -51,6 +51,26 @@ Deno.serve(async (req: Request) => {
     return json({ error: "JSON inválido" }, 400);
   }
 
+  // Acción especial one-shot: registrar el número para Cloud API.
+  // Se corre UNA SOLA VEZ por número. POST con { "action": "register", "pin": "123456" }
+  // El pin queda como 2FA del número (si Meta lo pide para reverificar).
+  if (body && body.action === "register") {
+    const pin = String(body.pin || "000000");
+    const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneId}/register`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", pin }),
+      });
+    } catch (e) {
+      return json({ error: "Network: " + String(e) }, 502);
+    }
+    const data = await res.json().catch(() => ({}));
+    return json({ status: res.status, ok: res.ok, body: data });
+  }
+
   const {
     template,
     to,
@@ -98,6 +118,22 @@ Deno.serve(async (req: Request) => {
       template, evento, estado: "ok", meta_message_id: result.messageId,
       payload: payloadLog,
     });
+    // BCC silencioso al superadmin (si está configurado el secret y el destinatario
+    // original NO es ese mismo número). Se loguea aparte con bcc:true en payload.
+    const bccPhone = Deno.env.get("WA_BCC_PHONE");
+    if (bccPhone && bccPhone !== phone) {
+      const bccResult = await sendTemplate({
+        token, phoneId, to: bccPhone, template, params: paramsArr, lang: usedLang,
+      });
+      await logNotif({
+        tasacion_id, destinatario_telefono: bccPhone,
+        template, evento: evento ? evento + "_bcc" : "bcc",
+        estado: bccResult.ok ? "ok" : "error",
+        meta_message_id: bccResult.messageId,
+        error_detalle: bccResult.ok ? undefined : bccResult.errorDetail,
+        payload: { ...payloadLog, bcc: true, original_to: phone },
+      });
+    }
     return json({ ok: true, message_id: result.messageId, lang: usedLang });
   }
 

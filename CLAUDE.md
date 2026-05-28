@@ -292,11 +292,19 @@ El token del System User "ArgenDreams API" + el Phone Number ID viven en `supaba
 # Desde el repo
 supabase link --project-ref xcijbomhvwwlzgmazvep
 supabase secrets set WA_TOKEN="EAA...token-largo..." WA_PHONE_NUMBER_ID="1088106684394212"
+# Opcional: copia silenciosa de cada WhatsApp al superadmin (auditoría)
+supabase secrets set WA_BCC_PHONE="5491156559854"
 ```
 
 O vía Dashboard: Project Settings → Edge Functions → Secrets → Add new secret.
 
 `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase automáticamente, no hay que cargarlos.
+
+**Sobre `WA_BCC_PHONE`**: si está definido, cada notificación exitosa también se manda a ese número (excepto si el destinatario natural ES ese mismo número, para no duplicar). El log de la copia se guarda en `notificaciones_log` con `evento` sufijado en `_bcc` y `payload->bcc = true`. Útil para auditar al principio. Para desactivarlo: borrar el secret.
+
+⚠️ **JWT verification debe estar OFF** para esta función (Dashboard → Functions → notify-whatsapp → Settings → Verify JWT: OFF). Sin esto las llamadas internas (pg_cron / cliente con `sb_publishable_*`) reciben 401.
+
+⚠️ **Registrar el número en Cloud API** (one-shot, después de aprobado por Meta): la primera vez tira `(#133010) Account not registered`. Solución: llamar a la Edge Function con `{action: 'register', pin: '123456'}` — necesita `timeout_milliseconds := 60000` desde pg_net porque Meta tarda ~10s. Una vez registrado queda activo permanente. PIN actual: `123456`.
 
 ### 2. Deploy de la Edge Function
 
