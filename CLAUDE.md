@@ -280,5 +280,70 @@ C:\proyectos\tasador-argendreams\
 - **ONLINE** en `http://tasador.argendreams.online` (GitHub Pages, repo PÚBLICO `github.com/fergonz00/tasador-argendreams`, rama `master`, archivo `CNAME`).
 - **Cloudflare en proceso**: NS cambiados en DonWeb a `apollo.ns.cloudflare.com`/`may.ns.cloudflare.com` (esperando propagación). Cuando active: SSL/TLS **Full** + **Always Use HTTPS** ON + **Cloudflare Access** (Zero Trust app sobre `tasador.argendreams.online`, política de emails permitidos = el portón).
 - **Pendiente seguridad de fondo**: RLS + Supabase Auth + hash de contraseñas (la anon key es pública vía la página).
-- **Fase 5 WhatsApp**: 8 plantillas redactadas en `supabase/whatsapp-templates.md`; falta número Meta (en cooldown), crearlas en WhatsApp Manager, y escribir/cablear Edge Function `notify-whatsapp` (+ aviso +1h con `pg_cron`).
+- **Fase 5 WhatsApp**: ✅ Edge Function + cableado + cron escritos (commits pendientes). Las 8 plantillas YA están aprobadas en Meta. Número `+54 9 11 2694-4031` (ID `1088106684394212`) todavía en revisión (esperar 1-24 h). WABA ID `1551183599919506`. App de Meta for Developers "ArgenDreams Notif" (ID `1414195913798748`). Cuando apruebe el número: deploy + carga de secrets + correr migration 007.
+
+## Fase 5 — WhatsApp deployment (cuando Meta apruebe el número)
+
+### 1. Cargar secrets en Supabase
+
+El token del System User "ArgenDreams API" + el Phone Number ID viven en `supabase contraseña.txt` (local, gitignored). Cargarlos como secrets de Edge Function:
+
+```bash
+# Desde el repo
+supabase link --project-ref xcijbomhvwwlzgmazvep
+supabase secrets set WA_TOKEN="EAA...token-largo..." WA_PHONE_NUMBER_ID="1088106684394212"
+```
+
+O vía Dashboard: Project Settings → Edge Functions → Secrets → Add new secret.
+
+`SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase automáticamente, no hay que cargarlos.
+
+### 2. Deploy de la Edge Function
+
+```bash
+supabase functions deploy notify-whatsapp --project-ref xcijbomhvwwlzgmazvep
+```
+
+La función queda en `https://xcijbomhvwwlzgmazvep.supabase.co/functions/v1/notify-whatsapp`.
+
+### 3. Correr migration 007 (cron del aviso +1h)
+
+**Pre-requisito**: habilitar extensiones `pg_cron` y `pg_net` en Dashboard → Database → Extensions.
+
+Después: Dashboard → SQL Editor → pegar `supabase/migrations/007_whatsapp_resumen_cron.sql` → Run.
+
+El cron queda corriendo cada 10 min con jobname `resumen-reventas-1h`. Para verlo: `SELECT * FROM cron.job;`. Para ver últimas ejecuciones: `SELECT * FROM cron.job_run_details ORDER BY end_time DESC LIMIT 20;`.
+
+### 4. Testing
+
+- Mandar a 1 usuario con `telefono_wa` en formato `5491137573604` (sin + ni espacios). Antes de la aprobación final del número, Meta solo deja mandar a destinatarios que estén **agregados como "Recipientes de prueba"** en WhatsApp Manager → API setup.
+- Crear una tasación nueva con el vendedor → debería llegar `nueva_tasacion` al admin (agustinc o quien tenga rol admin + telefono_wa).
+- Rebotar desde admin → debería llegar `tasacion_rebotada` al vendedor.
+- Enviar a reventas → debería llegar `nueva_unidad_reventa` a cada reventa con telefono_wa.
+- Esperar 1h (o forzar bajando `enviada_a_reventas_at` y corriendo `SELECT fn_resumen_reventas_pendientes();` manualmente) → debería llegar `resumen_reventas` al admin.
+
+### 5. Logs
+
+Cada envío se loguea en `notificaciones_log`:
+
+```sql
+SELECT created_at, evento, destinatario_telefono, estado, error_detalle
+FROM notificaciones_log
+ORDER BY created_at DESC LIMIT 50;
+```
+
+Si hay errores recurrentes con código `132001` (template not found in language) → es bug del code lang, la Edge Function ya hace fallback a `es` automáticamente.
+
+### Mapeo de eventos → templates → destinatarios
+
+| Evento (index.html) | Template (Meta) | Destinatario | Trigger |
+|---|---|---|---|
+| `notifyNuevaTasacion` | `nueva_tasacion` | todos los admin activos con WA | vendedor envía tasación |
+| `notifyTasacionRebotada` | `tasacion_rebotada` | vendedor | admin rebota |
+| `notifyNuevaUnidadReventa` | `nueva_unidad_reventa` | todas las reventas activas con WA | admin envía a reventas |
+| `notifyPedidoMejora` | `pedido_mejora` | reventas seleccionadas | admin pide mejora |
+| `notifyPrecioDeToma` | `precio_de_toma` | vendedor | admin envía precio al vendedor |
+| `notifyRecordatorioPrecio` | `recordatorio_precio` | 1 reventa puntual | botón "Recordar" del admin |
+| `notifyUsadoTomado` | `usado_tomado` | reventa_final | admin confirma toma |
+| (cron `pg_cron`) | `resumen_reventas` | admin | +1h después de "enviar a reventas" |
 ```

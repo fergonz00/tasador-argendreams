@@ -844,6 +844,134 @@ async function sbDelete(table, qs) {
   if (!r.ok) throw new Error(`SB DELETE ${table}: ${r.status} ${await r.text()}`);
 }
 
+// ─── WHATSAPP NOTIFICATIONS (Edge Function notify-whatsapp) ──────
+// Todo fire-and-forget: si Meta no está activado o el destinatario no tiene
+// telefono_wa / notificaciones_wa, simplemente no se manda. Los errores se
+// loguean a console y NUNCA rompen el flujo del usuario.
+async function notifyWA(opts) {
+  if (!opts || !opts.template || !opts.to) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/notify-whatsapp`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON,
+        'Authorization': `Bearer ${SUPABASE_ANON}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(opts)
+    });
+  } catch (e) { console.error('notifyWA failed:', e, opts); }
+}
+function _waVehiculo(t) {
+  return [t.usado_marca, t.usado_modelo, t.usado_anio].filter(Boolean).join(' ').trim() || 'Vehículo';
+}
+function _waARS(n) {
+  if (!n || isNaN(n)) return '$ —';
+  return '$ ' + Math.round(Number(n)).toLocaleString('es-AR');
+}
+function _waTelOK(u) {
+  return !!(u && u.activo !== false && u.notificaciones_wa !== false && u.telefono_wa);
+}
+async function _waAdmins() {
+  try {
+    return await sbGet('usuarios',
+      `?rol=eq.admin&activo=is.true&notificaciones_wa=is.true&telefono_wa=not.is.null&select=id,nombre,usuario,telefono_wa,activo,notificaciones_wa`);
+  } catch (e) { console.error('_waAdmins:', e); return []; }
+}
+async function _waReventas() {
+  try {
+    return await sbGet('usuarios',
+      `?rol=eq.reventa&activo=is.true&notificaciones_wa=is.true&telefono_wa=not.is.null&select=id,nombre,usuario,telefono_wa,activo,notificaciones_wa`);
+  } catch (e) { console.error('_waReventas:', e); return []; }
+}
+async function _waUserById(id) {
+  if (!id) return null;
+  try {
+    const r = await sbGet('usuarios',
+      `?id=eq.${id}&select=id,nombre,usuario,telefono_wa,activo,notificaciones_wa`);
+    return r[0] || null;
+  } catch (e) { console.error('_waUserById:', e); return null; }
+}
+// Eventos
+async function notifyNuevaTasacion(t, vendedorNombre) {
+  const admins = await _waAdmins();
+  if (!admins.length) return;
+  const vehiculo = _waVehiculo(t);
+  const km = t.usado_km ? String(t.usado_km) : '—';
+  for (const a of admins) {
+    notifyWA({
+      template: 'nueva_tasacion', to: a.telefono_wa,
+      params: [a.nombre || a.usuario || 'Admin', vendedorNombre || 'Vendedor', vehiculo, km],
+      evento: 'nueva_tasacion', tasacion_id: t.id, destinatario_id: a.id
+    });
+  }
+}
+async function notifyTasacionRebotada(t, camposTexto) {
+  const u = await _waUserById(t.vendedor_id);
+  if (!_waTelOK(u)) return;
+  notifyWA({
+    template: 'tasacion_rebotada', to: u.telefono_wa,
+    params: [u.nombre || u.usuario, _waVehiculo(t), camposTexto || 'algunos campos'],
+    evento: 'tasacion_rebotada', tasacion_id: t.id, destinatario_id: u.id
+  });
+}
+async function notifyNuevaUnidadReventa(t) {
+  const reventas = await _waReventas();
+  if (!reventas.length) return;
+  const vehiculo = _waVehiculo(t);
+  const km = t.usado_km ? String(t.usado_km) : '—';
+  const colorProv = [t.usado_color, t.usado_provincia].filter(Boolean).join(' · ') || '—';
+  for (const r of reventas) {
+    notifyWA({
+      template: 'nueva_unidad_reventa', to: r.telefono_wa,
+      params: [r.nombre || r.usuario || 'Reventa', vehiculo, km, colorProv],
+      evento: 'nueva_unidad_reventa', tasacion_id: t.id, destinatario_id: r.id
+    });
+  }
+}
+async function notifyPedidoMejora(t, reventaIds) {
+  if (!reventaIds || !reventaIds.length) return;
+  const vehiculo = _waVehiculo(t);
+  for (const rid of reventaIds) {
+    const u = await _waUserById(rid);
+    if (!_waTelOK(u)) continue;
+    notifyWA({
+      template: 'pedido_mejora', to: u.telefono_wa,
+      params: [u.nombre || u.usuario || 'Reventa', vehiculo],
+      evento: 'pedido_mejora', tasacion_id: t.id, destinatario_id: u.id
+    });
+  }
+}
+async function notifyPrecioDeToma(t, precio) {
+  const u = await _waUserById(t.vendedor_id);
+  if (!_waTelOK(u)) return;
+  const vehiculo = _waVehiculo(t);
+  const ref = t.cliente_nombre ? `${t.cliente_nombre} (${vehiculo})` : vehiculo;
+  notifyWA({
+    template: 'precio_de_toma', to: u.telefono_wa,
+    params: [u.nombre || u.usuario, ref, _waARS(precio)],
+    evento: 'precio_de_toma', tasacion_id: t.id, destinatario_id: u.id
+  });
+}
+async function notifyRecordatorioPrecio(t, reventaId) {
+  const u = await _waUserById(reventaId);
+  if (!_waTelOK(u)) return;
+  notifyWA({
+    template: 'recordatorio_precio', to: u.telefono_wa,
+    params: [u.nombre || u.usuario || 'Reventa', _waVehiculo(t)],
+    evento: 'recordatorio_precio', tasacion_id: t.id, destinatario_id: u.id
+  });
+}
+async function notifyUsadoTomado(t, reventaFinalId, precioFinal) {
+  const u = await _waUserById(reventaFinalId);
+  if (!_waTelOK(u)) return;
+  notifyWA({
+    template: 'usado_tomado', to: u.telefono_wa,
+    params: [u.nombre || u.usuario || 'Reventa', _waVehiculo(t), _waARS(precioFinal)],
+    evento: 'usado_tomado', tasacion_id: t.id, destinatario_id: u.id
+  });
+}
+
 // ─── LOADING / UTILS ─────────────────────────────────────────────
 function showLoading(text = '') {
   document.getElementById('loadingText').textContent = text;
@@ -1997,7 +2125,7 @@ async function submitTasacion() {
     showToast(editingTasacionId ? 'Tasación reenviada ✓' : 'Tasación enviada ✓', 'success');
 
     // TODO: disparar analyze-photos cuando esté deployada (fire-and-forget)
-    // TODO: notifyWA('tasacion_pendiente_carga') cuando esté configurada la línea Meta
+    notifyNuevaTasacion(record, currentUser.nombre || currentUser.usuario);
 
     // Reset y volver a Mis tasaciones para que vea su carga
     iniciarWizard();
@@ -2583,6 +2711,7 @@ async function confirmarRebote() {
     });
     await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'rebotada' });
     showToast('Tasación rebotada al vendedor', 'success');
+    notifyTasacionRebotada(t, campos.length ? campos.join(', ') : (nota || 'algunos campos'));
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) {
@@ -2614,8 +2743,15 @@ async function confirmarEnviarReventas() {
     if (nota) {
       await sbPost('comentarios_reventa', { tasacion_id: t.id, admin_id: currentUser.id, comentario: nota });
     }
-    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'en_reventa' });
+    // enviada_a_reventas_at habilita el cron del aviso resumen_reventas (+1h).
+    // resumen_reventas_enviado_at se setea cuando el cron dispara el aviso.
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, {
+      estado: 'en_reventa',
+      enviada_a_reventas_at: new Date().toISOString(),
+      resumen_reventas_enviado_at: null
+    });
     showToast('Enviada a reventas', 'success');
+    notifyNuevaUnidadReventa(t);
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) {
@@ -2696,8 +2832,10 @@ function faltanHTML(t) {
 }
 
 function recordarPrecio(id, nombre) {
-  // TODO Fase 5: disparar Edge Function notify-whatsapp con template recordatorio_precio
-  showToast(`Recordatorio a ${nombre} listo — se enviará por WhatsApp cuando la línea esté activa`, 'success');
+  const t = detalleActual && detalleActual.t;
+  if (!t) return;
+  notifyRecordatorioPrecio(t, id);
+  showToast(`Recordatorio enviado a ${nombre}`, 'success');
 }
 
 // Pedido de mejora DIRIGIDO: el admin elige a qué reventas pedirles mejor precio
@@ -2729,12 +2867,17 @@ function formMejoraHTML(t) {
 async function confirmarPedidoMejora() {
   const ids = [...document.querySelectorAll('#mejoraList input[type=checkbox]:checked')].map(c => c.value);
   if (!ids.length) { showToast('Elegí al menos una reventa', 'error'); return; }
+  const precios = (detalleActual && detalleActual.reventasPrecios) || [];
+  // Resolver de reventas_precios.id → usuarios.id (reventa_id) para mandar el WA
+  const reventaIds = ids.map(id => (precios.find(p => p.id === id) || {}).reventa_id).filter(Boolean);
+  const t = detalleActual.t;
   showLoading('Enviando pedido de mejora...');
   try {
     for (const id of ids) {
       await sbPatch('reventas_precios', `?id=eq.${id}`, { mejora_solicitada: true });
     }
     showToast(`Pedido de mejora enviado a ${ids.length} reventa${ids.length > 1 ? 's' : ''}`, 'success');
+    notifyPedidoMejora(t, reventaIds);
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) {
@@ -2760,6 +2903,7 @@ async function enviarPrecioVendedor() {
       reventa_ganadora_id: ganador.reventa_id   // para avisarle a la reventa elegida
     });
     showToast('Precio enviado al vendedor', 'success');
+    notifyPrecioDeToma(t, final);
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) {
@@ -2914,6 +3058,7 @@ async function confirmarTomaFinal() {
       reventa_final_precio: row.precio
     });
     showToast('Usado tomado ✓ — reventa notificada', 'success');
+    notifyUsadoTomado(t, row.reventa_id, row.precio);
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) { console.error(e); showToast('Error al confirmar la toma', 'error'); }
