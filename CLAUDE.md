@@ -141,7 +141,7 @@ Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/tur
 
 **Funciones clave en `index.html`:** `abrirPeritajeForm`/`cancelarPeritajeForm`, `peritajeFormHTML` (form data-driven desde constantes `PERI_*`), `_harvestPeritajeForm` (lee el DOM al draft `periDraft` antes de re-render para no perder lo tipeado), `agregarDanioPeri`/`quitarDanioPeri`, `guardarPeritaje` (separa `analisis_fisico` de `peritaje_costos`, bumpea ronda si `precios_recibidos`), `peritajeAdminBlockHTML` (resumen + botón Cargar/Editar en la vista admin), `peritajeReventaSectionHTML` (lo cualitativo que ve la reventa), `imprimirPeritaje` (hoja A4 con cláusula legal), `notifyPeritajeAgregado`. Badge reventa: `_reCotizaPorPeritaje` → "🔧 Re-cotizá — peritaje".
 
-**Pendiente WhatsApp:** crear el template `peritaje_agregado` (#9) en Meta (UTILITY, es_AR, 2 vars). Hasta entonces el aviso es **in-app** (badge + cartel en el detalle). La migration es `009_peritaje.sql`.
+**Estado:** código deployado a producción (commit `7eee7b4`, master) y migration `009_peritaje.sql` corrida (2026-06-02). **Pendiente WhatsApp:** crear el template `peritaje_agregado` (#9) en Meta (UTILITY, es_AR, 2 vars). Hasta entonces el aviso es **in-app** (badge + cartel en el detalle).
 
 ## Sheets externas que usa la app
 
@@ -295,9 +295,9 @@ C:\proyectos\tasador-argendreams\
         ├── 004_reventa_ganadora.sql ← corrida (tasaciones.reventa_ganadora_id = referencia)
         ├── 005_mejora_solicitada.sql ← corrida (reventas_precios.mejora_solicitada)
         ├── 006_reventa_final.sql ← corrida (cliente_acepto, reventa_final_id, reventa_final_precio)
-        └── 009_peritaje.sql ← ⏳ POR CORRER (analisis_fisico, peritaje_costos, peritaje_cargado_at)
+        └── 009_peritaje.sql ← corrida (analisis_fisico, peritaje_costos, peritaje_cargado_at)
 
-**Migrations 001–006 corridas en Supabase. 009 (peritaje) pendiente de correr.**
+**Migrations 001–006 y 009 corridas en Supabase.**
 
 ## Estado de deploy / infra (2026-05-27)
 - **ONLINE** en `http://tasador.argendreams.online` (GitHub Pages, repo PÚBLICO `github.com/fergonz00/tasador-argendreams`, rama `master`, archivo `CNAME`).
