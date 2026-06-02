@@ -467,6 +467,11 @@ input, select, textarea { font-family: var(--font); }
 }
 .detalle-foto img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.2s; }
 .detalle-foto:hover img { transform: scale(1.05); }
+.foto-quitar {
+  position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(0,0,0,0.6); color: white; border: none; cursor: pointer; font-size: 13px;
+  line-height: 1; display: flex; align-items: center; justify-content: center; z-index: 2;
+}
 .estado-pill-big {
   display: inline-block;
   padding: 5px 11px; border-radius: 14px;
@@ -2551,6 +2556,19 @@ function renderDetalleHTML(t, modo) {
         `}
       </div>
 
+      ${(t.peritaje_fotos && t.peritaje_fotos.length && !(isAdmin && detalleActual && detalleActual.vistaPeritaje)) ? `
+        <div class="detalle-section">
+          <div class="detalle-section-title">📸 Fotos del peritaje (${t.peritaje_fotos.length})</div>
+          <div class="detalle-fotos">
+            ${t.peritaje_fotos.map(url => `
+              <div class="detalle-foto" onclick="window.open('${url}', '_blank')">
+                <img src="${url}" loading="lazy" alt="foto del peritaje">
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
       ${isReventa ? peritajeReventaSectionHTML(t) : ''}
 
       ${isAdmin && t.analisis_ia_resumen ? `
@@ -2658,8 +2676,8 @@ async function cargarRelacionados(t, modo) {
 function rerenderDetalle() {
   document.getElementById('detalleModal').innerHTML =
     renderDetalleHTML(detalleActual.t, detalleActual.modo);
-  // Si está abierto el form de peritaje, dibujar los marcadores sobre la silueta
-  if (detalleActual && detalleActual.vistaPeritaje) renderPeriMarcadores();
+  // Si está abierto el form de peritaje, dibujar los marcadores sobre la silueta + las fotos
+  if (detalleActual && detalleActual.vistaPeritaje) { renderPeriMarcadores(); renderPeriFotos(); }
 }
 
 // ── Router de acciones según estado ──
@@ -3134,7 +3152,7 @@ async function loadReventaTasaciones() {
   try {
     // Solo columnas que la reventa puede ver (sin cliente / byd / precio ofrecido / IA / costos del peritaje)
     // analisis_fisico = peritaje CUALITATIVO (lo ve la reventa); peritaje_costos NO se pide (montos internos).
-    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,resultado,ronda_actual,reventa_final_id,reventa_final_precio,analisis_fisico,peritaje_cargado_at,created_at';
+    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,resultado,ronda_actual,reventa_final_id,reventa_final_precio,analisis_fisico,peritaje_fotos,peritaje_cargado_at,created_at';
     // Ve: las que están a tasar (en_reventa/precios_recibidos) + las que efectivamente se le tomaron a ella
     // (solo se entera si el admin le asignó la toma confirmada; nunca antes)
     const orFiltro = `or=(estado.in.(en_reventa,precios_recibidos),and(reventa_final_id.eq.${currentUser.id},estado.eq.cerrada,resultado.eq.tomada))`;
@@ -3312,6 +3330,10 @@ const PERI_ITEM_EST   = [['bien', 'Bien', 'var(--green)'], ['obs', 'Con observac
 
 // Borrador del peritaje en edición (se persiste en memoria mientras el form está abierto)
 let periDraft = null;
+// Fotos del peritaje (las carga el admin) — separadas de las iniciales del vendedor
+let periFotosExistentes = []; // URLs ya guardadas
+let periFotosFiles = [];      // File[] nuevos a subir
+let periFotosPreviews = [];   // data-URLs de los nuevos
 
 function _periItemEstLabel(k) { const f = PERI_ITEM_EST.find(e => e[0] === k); return f ? f[1] : '—'; }
 function _periItemEstColor(k) { const f = PERI_ITEM_EST.find(e => e[0] === k); return f ? f[2] : 'var(--grey-4)'; }
@@ -3362,13 +3384,45 @@ function _periDraftFromTas(t) {
 // ── Abrir / cerrar el formulario de peritaje (admin) ──
 function abrirPeritajeForm() {
   periDraft = _periDraftFromTas(detalleActual.t);
+  periFotosExistentes = Array.isArray(detalleActual.t.peritaje_fotos) ? [...detalleActual.t.peritaje_fotos] : [];
+  periFotosFiles = []; periFotosPreviews = [];
   detalleActual.vistaPeritaje = true;
   rerenderDetalle();
 }
 function cancelarPeritajeForm() {
   detalleActual.vistaPeritaje = false;
   periDraft = null;
+  periFotosExistentes = []; periFotosFiles = []; periFotosPreviews = [];
   rerenderDetalle();
+}
+
+// ── Fotos del peritaje ──
+function onPeriFotosChange(e) {
+  const files = Array.from(e.target.files || []);
+  files.forEach(f => {
+    periFotosFiles.push(f);
+    const reader = new FileReader();
+    reader.onload = ev => { periFotosPreviews.push(ev.target.result); renderPeriFotos(); };
+    reader.readAsDataURL(f);
+  });
+  e.target.value = '';
+}
+function removerPeriFotoExistente(i) { periFotosExistentes.splice(i, 1); renderPeriFotos(); }
+function removerPeriFotoNueva(i) { periFotosFiles.splice(i, 1); periFotosPreviews.splice(i, 1); renderPeriFotos(); }
+function renderPeriFotos() {
+  const cont = document.getElementById('periFotosPreview');
+  if (!cont) return;
+  const exist = periFotosExistentes.map((url, i) => `
+    <div class="detalle-foto" style="position:relative;">
+      <img src="${url}" alt="foto peritaje">
+      <button type="button" onclick="removerPeriFotoExistente(${i})" class="foto-quitar">✕</button>
+    </div>`).join('');
+  const nuevas = periFotosPreviews.map((src, i) => `
+    <div class="detalle-foto" style="position:relative;">
+      <img src="${src}" alt="foto nueva">
+      <button type="button" onclick="removerPeriFotoNueva(${i})" class="foto-quitar">✕</button>
+    </div>`).join('');
+  cont.innerHTML = (exist + nuevas) || '<div class="detalle-field-value muted">Sin fotos del peritaje todavía.</div>';
 }
 
 // ── Bloque que se muestra en la vista admin (resumen + botón cargar/editar) ──
@@ -3386,6 +3440,7 @@ function peritajeAdminBlockHTML(t) {
       <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:6px;">
         <div class="detalle-field"><div class="detalle-field-label">Estado general</div><div class="detalle-field-value">${af.estado_general || '—'}</div></div>
         <div class="detalle-field"><div class="detalle-field-label">Daños marcados</div><div class="detalle-field-value">${nDanios}</div></div>
+        <div class="detalle-field"><div class="detalle-field-label">Fotos peritaje</div><div class="detalle-field-value">${(t.peritaje_fotos || []).length}</div></div>
         <div class="detalle-field"><div class="detalle-field-label">Total arreglos (interno)</div><div class="detalle-field-value" style="color:var(--accent);">${formatARS(total)}</div></div>
         ${t.peritaje_cargado_at ? `<div class="detalle-field"><div class="detalle-field-label">Cargado</div><div class="detalle-field-value">${formatFechaCorta(t.peritaje_cargado_at)}</div></div>` : ''}
       </div>${obs}`;
@@ -3480,6 +3535,11 @@ function peritajeFormHTML(t) {
 
     <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">📝 Observaciones generales</div>
     <textarea id="peri_observaciones" style="min-height:160px; resize:none; width:100%; box-sizing:border-box;" placeholder="Faltantes, averías, estado general, comentarios para las reventas...">${d.observaciones || ''}</textarea>
+
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">📸 Fotos del peritaje</div>
+    <p style="font-size:12px; color:var(--grey-4); margin:-2px 0 8px;">Se suman a las fotos iniciales del vendedor. Las ve la reventa como parte del peritaje (ej: detalle de un daño, motor, tablero).</p>
+    <input type="file" id="periFotosInput" multiple accept="image/*" onchange="onPeriFotosChange(event)" style="margin-bottom:8px;">
+    <div id="periFotosPreview" class="detalle-fotos"></div>
 
     <div class="detalle-actions" style="margin-top:18px;">
       <button class="det-btn ghost" onclick="cancelarPeritajeForm()">Cancelar</button>
@@ -3604,8 +3664,16 @@ async function guardarPeritaje() {
 
   showLoading('Guardando peritaje...');
   try {
+    // Subir fotos nuevas del peritaje y combinar con las existentes
+    const fotoUrls = [...periFotosExistentes];
+    for (let i = 0; i < periFotosFiles.length; i++) {
+      showLoading(`Subiendo foto ${i + 1} de ${periFotosFiles.length}...`);
+      const ext = (periFotosFiles[i].name.split('.').pop() || 'jpg');
+      const path = `${t.id}/peritaje_${Date.now()}_${i}.${ext}`;
+      fotoUrls.push(await sbUpload('argendreams-fotos', path, periFotosFiles[i]));
+    }
     const patch = {
-      analisis_fisico: af, peritaje_costos: costos, peritaje_cargado_at: new Date().toISOString()
+      analisis_fisico: af, peritaje_costos: costos, peritaje_fotos: fotoUrls, peritaje_cargado_at: new Date().toISOString()
     };
     if (reCotiza) {
       patch.estado = 'en_reventa';
@@ -3620,7 +3688,7 @@ async function guardarPeritaje() {
     } else {
       showToast('Peritaje guardado ✓', 'success');
     }
-    periDraft = null;
+    periDraft = null; periFotosExistentes = []; periFotosFiles = []; periFotosPreviews = [];
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) {

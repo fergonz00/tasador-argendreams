@@ -139,6 +139,8 @@ Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/tur
 - `analisis_fisico` = **cualitativo** (daños sin monto, estados mecánica/interior, equipamiento, neumáticos, documentación, N° motor/chasis, estado general, pintura, observaciones). **Lo ve la reventa** (lo incluye en su SELECT).
 - `peritaje_costos` = **montos** de arreglo (por ítem/daño + total). **Solo admin** — la reventa NO lo pide en su SELECT (mismo criterio que precio ofrecido / IA / CCA).
 
+**Fotos del peritaje** (`peritaje_fotos` text[], migration 010): el admin puede subir fotos propias en el peritaje (al bucket `argendreams-fotos`), **adicionales** a las iniciales del vendedor (`fotos`). Se muestran en una sección "📸 Fotos del peritaje" aparte y **las ve la reventa** (su SELECT las incluye). Estado en memoria mientras se edita: `periFotosExistentes`/`periFotosFiles`/`periFotosPreviews` + `onPeriFotosChange`/`renderPeriFotos`. La hoja imprimible NO incluye fotos (igual que TGA, hoja limpia).
+
 **Carrocería = silueta con marcadores** (portada de Fazzini): `assets/car-vistas.png`, se toca la silueta y se agrega un marcador numerado (x,y en %) con tipo + descripción + costo. Posición + tipo + desc van a `analisis_fisico.marcadores` (lo ve la reventa, con la imagen y los puntos); el costo va a `peritaje_costos.marcadores[]` (solo admin). Los marcadores se editan en vivo (`renderPeriMarcadores`, sin re-render del modal) para no recargar la imagen ni perder foco.
 
 **Funciones clave en `index.html`:** `abrirPeritajeForm`/`cancelarPeritajeForm`, `peritajeFormHTML` (form data-driven desde constantes `PERI_*`), `_harvestPeritajeForm` (lee el DOM al draft `periDraft` antes de guardar), `onPeriCarImgClick`/`renderPeriMarcadores`/`actualizarMarcadorPeri`/`borrarMarcadorPeri` (silueta), `periEquipTodos(true/false)` (tildar/limpiar todo el equipamiento), `guardarPeritaje` (separa `analisis_fisico` de `peritaje_costos`, bumpea ronda si `precios_recibidos`), `peritajeAdminBlockHTML` (resumen + botón Cargar/Editar en la vista admin), `peritajeReventaSectionHTML` (cualitativo + silueta que ve la reventa), `imprimirPeritaje` (hoja A4 con silueta + cláusula legal), `notifyPeritajeAgregado`. Badge reventa: `_reCotizaPorPeritaje` → "🔧 Re-cotizá — peritaje".
@@ -175,6 +177,7 @@ Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/tur
 - **analisis_fisico** (jsonb, migration 009) — peritaje cualitativo, lo ve la reventa
 - **peritaje_costos** (jsonb, migration 009) — montos de arreglo, solo admin
 - **peritaje_cargado_at** (timestamptz, migration 009)
+- **peritaje_fotos** (text[], migration 010) — fotos que carga el admin en el peritaje (adicionales a `fotos`), las ve la reventa
 - estado, resultado, descuento_pct_admin (default 9), precio_final_admin, ronda_actual
 - analisis_ia_resumen, analisis_ia_detalle (jsonb), analisis_ia_descuento, analisis_ia_estado
 - created_at, updated_at (con trigger)
@@ -297,9 +300,10 @@ C:\proyectos\tasador-argendreams\
         ├── 004_reventa_ganadora.sql ← corrida (tasaciones.reventa_ganadora_id = referencia)
         ├── 005_mejora_solicitada.sql ← corrida (reventas_precios.mejora_solicitada)
         ├── 006_reventa_final.sql ← corrida (cliente_acepto, reventa_final_id, reventa_final_precio)
-        └── 009_peritaje.sql ← corrida (analisis_fisico, peritaje_costos, peritaje_cargado_at)
+        ├── 009_peritaje.sql ← corrida (analisis_fisico, peritaje_costos, peritaje_cargado_at)
+        └── 010_peritaje_fotos.sql ← ⏳ POR CORRER (peritaje_fotos text[])
 
-**Migrations 001–006 y 009 corridas en Supabase.**
+**Migrations 001–006 y 009 corridas. 010 (fotos del peritaje) pendiente de correr.**
 
 ## Estado de deploy / infra (2026-05-27)
 - **ONLINE** en `http://tasador.argendreams.online` (GitHub Pages, repo PÚBLICO `github.com/fergonz00/tasador-argendreams`, rama `master`, archivo `CNAME`).
