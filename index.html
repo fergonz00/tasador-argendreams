@@ -536,6 +536,24 @@ input, select, textarea { font-family: var(--font); }
 .resumen-precio .rp-muted { opacity: 0.7; font-size: 12px; }
 .resumen-precio .rp-gain { color: #6ee7b7; font-weight: 700; }
 
+/* ─── PERITAJE FÍSICO ─── */
+.peri-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.peri-list { display: flex; flex-direction: column; gap: 8px; }
+.peri-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 10px; border: 1.5px solid var(--grey-2); border-radius: 8px; background: white;
+}
+.peri-row-label { flex: 1 1 130px; font-size: 13px; font-weight: 600; min-width: 110px; }
+.peri-row select, .peri-row input { flex: 1 1 120px; }
+.peri-danio { padding: 10px; border: 1.5px solid var(--grey-2); border-radius: 8px; background: white; }
+.peri-danio-grid { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.peri-danio-grid select { flex: 1 1 130px; }
+.peri-ro-row {
+  display: flex; justify-content: space-between; gap: 12px; font-size: 13px;
+  padding: 6px 0; border-bottom: 1px solid var(--grey-2);
+}
+.peri-ro-row span:first-child { font-weight: 600; }
+
 /* ─── GESTIÓN MODELOS BYD ─── */
 .byd-card {
   background: white; border: 1.5px solid var(--grey-2); border-radius: 10px;
@@ -941,6 +959,19 @@ async function notifyPedidoMejora(t, reventaIds) {
       template: 'pedido_mejora', to: u.telefono_wa,
       params: [u.nombre || u.usuario || 'Reventa', vehiculo],
       evento: 'pedido_mejora', tasacion_id: t.id, destinatario_id: u.id
+    });
+  }
+}
+async function notifyPeritajeAgregado(t) {
+  // Aviso propio (NO pedido_mejora): se cargó el peritaje físico, hay que re-cotizar.
+  const reventas = await _waReventas();
+  if (!reventas.length) return;
+  const vehiculo = _waVehiculo(t);
+  for (const r of reventas) {
+    notifyWA({
+      template: 'peritaje_agregado', to: r.telefono_wa,
+      params: [r.nombre || r.usuario || 'Reventa', vehiculo],
+      evento: 'peritaje_agregado', tasacion_id: t.id, destinatario_id: r.id
     });
   }
 }
@@ -2513,6 +2544,8 @@ function renderDetalleHTML(t, modo) {
         `}
       </div>
 
+      ${isReventa ? peritajeReventaSectionHTML(t) : ''}
+
       ${isAdmin && t.analisis_ia_resumen ? `
         <div class="detalle-section">
           <div class="detalle-section-title">🤖 Análisis IA de fotos</div>
@@ -2571,6 +2604,7 @@ async function abrirDetalle(t, modo) {
       ganadorId: rel.reventasPrecios.length ? rel.reventasPrecios[0].id : null,
       vistaMejora: false,
       vistaConfirmarToma: false,
+      vistaPeritaje: false,
       tomaSel: null
     };
     document.getElementById('detalleModal').innerHTML = renderDetalleHTML(t, modo);
@@ -2621,15 +2655,20 @@ function rerenderDetalle() {
 
 // ── Router de acciones según estado ──
 function renderAccionesAdmin(t) {
+  // El formulario de peritaje reemplaza todo mientras está abierto
+  if (detalleActual.vistaPeritaje) return peritajeFormHTML(t);
+  const peri = peritajeAdminBlockHTML(t);
+  let acciones;
   switch (t.estado) {
-    case 'pendiente_admin':   return accionesPendienteHTML();
-    case 'rebotada':          return infoSection('🔁 Rebotada — esperando que el vendedor corrija y reenvíe.', ultimoReboteHTML());
+    case 'pendiente_admin':   acciones = accionesPendienteHTML(); break;
+    case 'rebotada':          acciones = infoSection('🔁 Rebotada — esperando que el vendedor corrija y reenvíe.', ultimoReboteHTML()); break;
     case 'en_reventa':
-    case 'precios_recibidos': return detalleActual.vistaMejora ? formMejoraHTML(t) : (rankingHTML(t) + faltanHTML(t));
-    case 'precio_al_vendedor':return detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t) : precioEnviadoHTML(t, true);
-    case 'cerrada':           return cerradaHTML(t);
-    default:                  return '';
+    case 'precios_recibidos': acciones = detalleActual.vistaMejora ? formMejoraHTML(t) : (rankingHTML(t) + faltanHTML(t)); break;
+    case 'precio_al_vendedor':acciones = detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t) : precioEnviadoHTML(t, true); break;
+    case 'cerrada':           acciones = cerradaHTML(t); break;
+    default:                  acciones = '';
   }
+  return peri + acciones;
 }
 
 function renderAccionesVendedor(t) {
@@ -3084,8 +3123,9 @@ async function loadReventaTasaciones() {
   const list = document.getElementById('reventaList');
   list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando...</div>';
   try {
-    // Solo columnas que la reventa puede ver (sin cliente / byd / precio ofrecido / IA)
-    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,resultado,ronda_actual,reventa_final_id,reventa_final_precio,created_at';
+    // Solo columnas que la reventa puede ver (sin cliente / byd / precio ofrecido / IA / costos del peritaje)
+    // analisis_fisico = peritaje CUALITATIVO (lo ve la reventa); peritaje_costos NO se pide (montos internos).
+    const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,resultado,ronda_actual,reventa_final_id,reventa_final_precio,analisis_fisico,peritaje_cargado_at,created_at';
     // Ve: las que están a tasar (en_reventa/precios_recibidos) + las que efectivamente se le tomaron a ella
     // (solo se entera si el admin le asignó la toma confirmada; nunca antes)
     const orFiltro = `or=(estado.in.(en_reventa,precios_recibidos),and(reventa_final_id.eq.${currentUser.id},estado.eq.cerrada,resultado.eq.tomada))`;
@@ -3108,12 +3148,25 @@ function _esActivaReventa(t) { return ['en_reventa', 'precios_recibidos'].includ
 function _gane(t) { return t.reventa_final_id === currentUser.id; }
 
 function _mejoraPedida(t) { const mp = _miPrecioDe(t); return !!(mp && mp.mejora_solicitada); }
+// ¿Coticé esta unidad en una ronda anterior? (sirve para detectar re-cotización por peritaje)
+function _cotizoRondaPrevia(t) {
+  const ra = Number(t.ronda_actual) || 1;
+  return Object.keys(reventaMisPrecios).some(k => {
+    const [tid, r] = k.split('_');
+    return tid === t.id && Number(r) < ra;
+  });
+}
+// Re-cotización por peritaje: la unidad volvió a ronda nueva, hay peritaje y antes ya le había puesto precio
+function _reCotizaPorPeritaje(t) {
+  return _esActivaReventa(t) && !_miPrecioDe(t) && _tienePeritaje(t) && _cotizoRondaPrevia(t);
+}
 
 // Badge de estado para la card de reventa
 function _badgeReventa(t) {
   const mp = _miPrecioDe(t);
   if (t.estado === 'cerrada' && t.resultado === 'tomada' && _gane(t))
     return { txt: '🏆 Tomado a tu precio', bg: 'var(--green-light)', fg: 'var(--green)' };
+  if (_reCotizaPorPeritaje(t)) return { txt: '🔧 Re-cotizá — peritaje', bg: 'var(--red-light)', fg: 'var(--accent)' };
   if (_mejoraPedida(t)) return { txt: '📈 Mejorá tu precio', bg: 'var(--red-light)', fg: 'var(--accent)' };
   if (mp) return { txt: '✅ Tasado', bg: 'var(--green-light)', fg: 'var(--green)' };
   return { txt: '⏳ Por tasar', bg: 'var(--orange-light)', fg: 'var(--orange)' };
@@ -3185,6 +3238,7 @@ function renderAccionesReventa(t) {
   // Activa (en_reventa / precios_recibidos): cargar/actualizar precio
   return `<div class="detalle-section" style="border:none;">
     <div class="detalle-section-title">💰 Tu precio de toma</div>
+    ${_reCotizaPorPeritaje(t) ? `<div class="detalle-comment" style="margin-bottom:10px; background:var(--red-light); border-color:var(--accent); color:var(--accent);">🔧 Se cargó el <strong>peritaje físico</strong> de esta unidad. Reveé tu precio según el estado real (mirá la sección "Peritaje físico" más arriba).</div>` : ''}
     ${mp && mp.mejora_solicitada ? `<div class="detalle-comment" style="margin-bottom:10px; background:var(--red-light); border-color:var(--accent); color:var(--accent);">📈 El admin te pide que <strong>mejores tu precio</strong> para esta unidad.</div>` : ''}
     ${mp ? `<div class="detalle-field-value muted" style="margin-bottom:8px;">Ya cargaste ${formatARS(mp.precio)}. Podés actualizarlo.</div>` : ''}
     <div class="accion-form">
@@ -3226,6 +3280,393 @@ async function guardarPrecioReventa(id) {
   } catch (e) {
     console.error(e); showToast('Error al guardar el precio', 'error');
   } finally { hideLoading(); }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// PERITAJE FÍSICO — lo carga el admin (Agustín es admin + perito)
+// Base: módulo de Fazzini (tasador-tga) + secciones de la hoja papel de Agustín.
+// analisis_fisico = cualitativo (lo ve la reventa) · peritaje_costos = montos (solo admin).
+// ═════════════════════════════════════════════════════════════════
+
+const PERI_MECANICA   = ['Motor', 'Caja', 'Embrague', 'Diferencial', 'Suspensión', 'Frenos', 'Dirección', 'Tren delantero', 'Tren trasero', 'Escape'];
+const PERI_INTERIOR   = ['Tablero / consola', 'Asientos', 'Tapizado', 'Alfombras', 'Techo interior', 'Limpieza general'];
+const PERI_EQUIP      = ['Aire acondicionado', 'Dirección asistida', 'Levantavidrios del.', 'Levantavidrios tras.', 'Espejos eléctricos', 'Cierre centralizado', 'Cierre a distancia', 'Alarma', 'Airbag conductor', 'Airbag pasajero', 'Airbags laterales', 'ABS', 'Climatizador automático', 'Llantas de aleación', 'Faros antiniebla', 'Computadora de a bordo', 'Caja automática', 'Stereo', 'GNC (con oblea)'];
+const PERI_NEUM       = [['di', 'Del. izquierdo'], ['dd', 'Del. derecho'], ['ti', 'Tras. izquierdo'], ['td', 'Tras. derecho'], ['aux', 'Auxilio']];
+const PERI_NEUM_EST   = ['Nuevo', 'Bueno', '50%', 'Gastado', 'A cambiar'];
+const PERI_DOCS       = ['VTV vigente', 'Duplicado de llaves', 'Manuales', 'Criquet', 'Llave de ruedas', 'Código de stereo', 'Service oficial al día'];
+const PERI_DANIO_UBIC = ['Frente', 'Capó', 'Paragolpe del.', 'Lateral izq.', 'Lateral der.', 'Techo', 'Baúl / portón', 'Paragolpe tras.', 'Trasera', 'Pisos / bajos', 'Otro'];
+const PERI_DANIO_TIPO = ['Rayón', 'Abolladura', 'Golpe', 'Falta / rotura de pieza', 'Problema de pintura', 'Repintado', 'Granizo', 'Otro'];
+const PERI_PINTURA    = ['Original 100%', 'Repintada parcial', 'Repintada total', 'Con detalles', 'Otro'];
+const PERI_ESTADO_GRAL= ['Malo', 'Regular', 'Bueno', 'Muy bueno', 'Excelente'];
+const PERI_TAPIZADO   = ['Tela', 'Cuero', 'Cuero ecológico', 'Mixto', 'Vinilo'];
+const PERI_ITEM_EST   = [['bien', 'Bien', 'var(--green)'], ['obs', 'Con observación', 'var(--orange)'], ['mal', 'Mal', 'var(--red)']];
+
+// Borrador del peritaje en edición (se persiste en memoria mientras el form está abierto)
+let periDraft = null;
+
+function _periItemEstLabel(k) { const f = PERI_ITEM_EST.find(e => e[0] === k); return f ? f[1] : '—'; }
+function _periItemEstColor(k) { const f = PERI_ITEM_EST.find(e => e[0] === k); return f ? f[2] : 'var(--grey-4)'; }
+
+// ¿Tiene peritaje cargado? (analisis_fisico no vacío)
+function _tienePeritaje(t) {
+  return !!(t && t.analisis_fisico && typeof t.analisis_fisico === 'object' && Object.keys(t.analisis_fisico).length);
+}
+
+// Total de arreglos (admin): suma de costos de mecánica + interior + daños
+function _periTotal(costos) {
+  if (!costos || typeof costos !== 'object') return 0;
+  let tot = 0;
+  ['mecanica', 'interior'].forEach(g => { const o = costos[g] || {}; Object.keys(o).forEach(k => tot += Number(o[k]) || 0); });
+  (costos.danios || []).forEach(c => tot += Number(c) || 0);
+  return tot;
+}
+
+// ── Inicialización del borrador desde lo guardado (o vacío) ──
+function _periDraftFromTas(t) {
+  const af = (t.analisis_fisico && typeof t.analisis_fisico === 'object') ? t.analisis_fisico : {};
+  const co = (t.peritaje_costos && typeof t.peritaje_costos === 'object') ? t.peritaje_costos : {};
+  const mecanica = {}, interior = {};
+  PERI_MECANICA.forEach(l => {
+    const a = (af.mecanica || {})[l] || {};
+    mecanica[l] = { estado: a.estado || 'bien', nota: a.nota || '', costo: ((co.mecanica || {})[l]) ?? '' };
+  });
+  PERI_INTERIOR.forEach(l => {
+    const a = (af.interior || {})[l] || {};
+    interior[l] = { estado: a.estado || 'bien', nota: a.nota || '', costo: ((co.interior || {})[l]) ?? '' };
+  });
+  const equipamiento = {}; PERI_EQUIP.forEach(l => equipamiento[l] = !!(af.equipamiento || {})[l]);
+  const documentacion = {}; PERI_DOCS.forEach(l => documentacion[l] = !!(af.documentacion || {})[l]);
+  const neumaticos = { marca: (af.neumaticos || {}).marca || '' };
+  PERI_NEUM.forEach(([k]) => neumaticos[k] = (af.neumaticos || {})[k] || '');
+  const danios = (af.danios || []).map((d, i) => ({
+    ubicacion: d.ubicacion || '', tipo: d.tipo || '', desc: d.desc || '', costo: ((co.danios || [])[i]) ?? ''
+  }));
+  return {
+    estado_general: af.estado_general || '', nro_motor: af.nro_motor || '', nro_chasis: af.nro_chasis || '',
+    km_entrega: af.km_entrega || '', pintura: af.pintura || '', pintura_obs: af.pintura_obs || '',
+    tapizado: af.tapizado || '', observaciones: af.observaciones || '',
+    mecanica, interior, equipamiento, documentacion, neumaticos, danios
+  };
+}
+
+// ── Abrir / cerrar el formulario de peritaje (admin) ──
+function abrirPeritajeForm() {
+  periDraft = _periDraftFromTas(detalleActual.t);
+  detalleActual.vistaPeritaje = true;
+  rerenderDetalle();
+}
+function cancelarPeritajeForm() {
+  detalleActual.vistaPeritaje = false;
+  periDraft = null;
+  rerenderDetalle();
+}
+
+// ── Bloque que se muestra en la vista admin (resumen + botón cargar/editar) ──
+function peritajeAdminBlockHTML(t) {
+  const editable = ['pendiente_admin', 'en_reventa', 'precios_recibidos'].includes(t.estado);
+  const tiene = _tienePeritaje(t);
+  if (!tiene && !editable) return '';
+  let resumen = '';
+  if (tiene) {
+    const af = t.analisis_fisico;
+    const total = _periTotal(t.peritaje_costos);
+    const nDanios = (af.danios || []).length;
+    const obs = af.observaciones ? `<div class="detalle-comment" style="margin-top:8px;">${af.observaciones}</div>` : '';
+    resumen = `
+      <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:6px;">
+        <div class="detalle-field"><div class="detalle-field-label">Estado general</div><div class="detalle-field-value">${af.estado_general || '—'}</div></div>
+        <div class="detalle-field"><div class="detalle-field-label">Daños marcados</div><div class="detalle-field-value">${nDanios}</div></div>
+        <div class="detalle-field"><div class="detalle-field-label">Total arreglos (interno)</div><div class="detalle-field-value" style="color:var(--accent);">${formatARS(total)}</div></div>
+        ${t.peritaje_cargado_at ? `<div class="detalle-field"><div class="detalle-field-label">Cargado</div><div class="detalle-field-value">${formatFechaCorta(t.peritaje_cargado_at)}</div></div>` : ''}
+      </div>${obs}`;
+  }
+  const btns = `<div class="detalle-actions" style="margin-top:12px;">
+      ${editable ? `<button class="det-btn outline" onclick="abrirPeritajeForm()">🔧 ${tiene ? 'Editar' : 'Cargar'} peritaje físico</button>` : ''}
+      ${tiene ? `<button class="det-btn ghost" onclick="imprimirPeritaje('${t.id}')">🖨️ Imprimir peritaje</button>` : ''}
+    </div>`;
+  const aviso = (tiene && t.estado === 'precios_recibidos')
+    ? `<p style="font-size:12px; color:var(--grey-4); margin-top:6px;">Si volvés a guardar el peritaje, las reventas re-cotizan (nueva ronda) y reciben el aviso.</p>` : '';
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">🔧 Peritaje físico ${tiene ? '<span style="color:var(--green); font-size:13px;">· cargado</span>' : '<span style="color:var(--grey-4); font-size:13px;">· sin cargar</span>'}</div>
+    ${resumen}${btns}${aviso}
+  </div>`;
+}
+
+// ── Formulario completo del peritaje ──
+function peritajeFormHTML(t) {
+  const d = periDraft || (periDraft = _periDraftFromTas(t));
+  const opt = (arr, sel, ph) => `<option value="">${ph || '—'}</option>` + arr.map(o => {
+    const v = Array.isArray(o) ? o[1] : o; return `<option value="${escAttr(v)}" ${v === sel ? 'selected' : ''}>${v}</option>`;
+  }).join('');
+  const estadoSelect = (id, val) => `<select id="${id}" class="byd-in" style="margin:0;">${PERI_ITEM_EST.map(e => `<option value="${e[0]}" ${e[0] === val ? 'selected' : ''}>${e[1]}</option>`).join('')}</select>`;
+
+  const checklistRows = (grupo, labels) => labels.map((l, i) => {
+    const it = d[grupo][l] || { estado: 'bien', nota: '', costo: '' };
+    return `<div class="peri-row">
+      <div class="peri-row-label">${l}</div>
+      ${estadoSelect(`peri_${grupo}_${i}_estado`, it.estado)}
+      <input id="peri_${grupo}_${i}_nota" class="byd-in" style="margin:0;" placeholder="Observación" value="${escAttr(it.nota)}">
+      <input id="peri_${grupo}_${i}_costo" class="byd-in" style="margin:0; max-width:120px;" type="number" min="0" step="10000" placeholder="$ arreglo" value="${it.costo}">
+    </div>`;
+  }).join('');
+
+  const equipChecks = PERI_EQUIP.map((l, i) =>
+    `<label class="campo-check ${d.equipamiento[l] ? 'checked' : ''}" onclick="this.classList.toggle('checked')">
+      <input type="checkbox" id="peri_eq_${i}" ${d.equipamiento[l] ? 'checked' : ''}> ${l}
+    </label>`).join('');
+
+  const docChecks = PERI_DOCS.map((l, i) =>
+    `<label class="campo-check ${d.documentacion[l] ? 'checked' : ''}" onclick="this.classList.toggle('checked')">
+      <input type="checkbox" id="peri_doc_${i}" ${d.documentacion[l] ? 'checked' : ''}> ${l}
+    </label>`).join('');
+
+  const neumRows = PERI_NEUM.map(([k, l]) =>
+    `<div class="peri-row">
+      <div class="peri-row-label">${l}</div>
+      <select id="peri_neum_${k}" class="byd-in" style="margin:0;">${opt(PERI_NEUM_EST, d.neumaticos[k], 'Estado')}</select>
+    </div>`).join('');
+
+  const danioRows = d.danios.map((dn, i) => `
+    <div class="peri-danio" id="peri_danio_${i}">
+      <div class="peri-danio-grid">
+        <select id="peri_dn_${i}_ubic" class="byd-in" style="margin:0;">${opt(PERI_DANIO_UBIC, dn.ubicacion, 'Ubicación')}</select>
+        <select id="peri_dn_${i}_tipo" class="byd-in" style="margin:0;">${opt(PERI_DANIO_TIPO, dn.tipo, 'Tipo de daño')}</select>
+        <input id="peri_dn_${i}_costo" class="byd-in" style="margin:0; max-width:130px;" type="number" min="0" step="10000" placeholder="$ arreglo" value="${dn.costo}">
+        <button class="det-btn ghost" style="flex:0 0 auto; min-width:0; padding:6px 12px;" onclick="quitarDanioPeri(${i})">✕</button>
+      </div>
+      <input id="peri_dn_${i}_desc" class="byd-in" style="margin:6px 0 0;" placeholder="Descripción del daño" value="${escAttr(dn.desc)}">
+    </div>`).join('');
+
+  return `<div class="detalle-section" id="peritajeForm">
+    <div class="detalle-section-title">🔧 Peritaje físico de la unidad</div>
+    <p style="font-size:13px; color:var(--grey-4); margin-bottom:10px;">Las reventas ven el estado, los daños y el equipamiento (no los montos de arreglo).</p>
+
+    <div class="peri-grid3" style="margin-bottom:14px;">
+      <div><label class="detalle-field-label">Estado general</label><select id="peri_estado_general" class="byd-in" style="margin-top:4px;">${opt(PERI_ESTADO_GRAL, d.estado_general, '—')}</select></div>
+      <div><label class="detalle-field-label">N° de motor</label><input id="peri_nro_motor" class="byd-in" style="margin-top:4px;" value="${escAttr(d.nro_motor)}"></div>
+      <div><label class="detalle-field-label">N° de chasis</label><input id="peri_nro_chasis" class="byd-in" style="margin-top:4px;" value="${escAttr(d.nro_chasis)}"></div>
+      <div><label class="detalle-field-label">KM a la entrega</label><input id="peri_km_entrega" class="byd-in" style="margin-top:4px;" type="number" min="0" value="${d.km_entrega}"></div>
+      <div><label class="detalle-field-label">Pintura</label><select id="peri_pintura" class="byd-in" style="margin-top:4px;">${opt(PERI_PINTURA, d.pintura, '—')}</select></div>
+      <div><label class="detalle-field-label">Tapizado</label><select id="peri_tapizado" class="byd-in" style="margin-top:4px;">${opt(PERI_TAPIZADO, d.tapizado, '—')}</select></div>
+    </div>
+    <input id="peri_pintura_obs" class="byd-in" style="margin-bottom:16px;" placeholder="Observación de pintura (opcional)" value="${escAttr(d.pintura_obs)}">
+
+    <div class="detalle-section-title" style="font-size:14px;">🔩 Mecánica</div>
+    <div class="peri-list">${checklistRows('mecanica', PERI_MECANICA)}</div>
+
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">🪑 Interior</div>
+    <div class="peri-list">${checklistRows('interior', PERI_INTERIOR)}</div>
+
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">🛠️ Carrocería — daños</div>
+    <div id="periDaniosList" class="peri-list">${danioRows || '<div class="detalle-field-value muted">Sin daños marcados.</div>'}</div>
+    <button class="det-btn outline" style="margin-top:8px;" onclick="agregarDanioPeri()">➕ Agregar daño</button>
+
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">⚙️ Equipamiento</div>
+    <div class="campos-corregir">${equipChecks}</div>
+
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">🛞 Neumáticos</div>
+    <input id="peri_neum_marca" class="byd-in" style="margin-bottom:8px;" placeholder="Marca de los neumáticos (opcional)" value="${escAttr(d.neumaticos.marca)}">
+    <div class="peri-list">${neumRows}</div>
+
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">📄 Documentación</div>
+    <div class="campos-corregir">${docChecks}</div>
+
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">📝 Observaciones generales</div>
+    <textarea id="peri_observaciones" placeholder="Faltantes, averías, comentarios para las reventas...">${d.observaciones || ''}</textarea>
+
+    <div class="detalle-actions" style="margin-top:18px;">
+      <button class="det-btn ghost" onclick="cancelarPeritajeForm()">Cancelar</button>
+      <button class="det-btn green" onclick="guardarPeritaje()">💾 Guardar peritaje</button>
+    </div>
+  </div>`;
+}
+
+// ── Daños dinámicos: harvest antes de re-render para no perder lo tipeado ──
+function _harvestPeritajeForm() {
+  if (!periDraft) return;
+  const val = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const chk = id => { const el = document.getElementById(id); return !!(el && el.checked); };
+  periDraft.estado_general = val('peri_estado_general');
+  periDraft.nro_motor = val('peri_nro_motor');
+  periDraft.nro_chasis = val('peri_nro_chasis');
+  periDraft.km_entrega = val('peri_km_entrega');
+  periDraft.pintura = val('peri_pintura');
+  periDraft.pintura_obs = val('peri_pintura_obs');
+  periDraft.tapizado = val('peri_tapizado');
+  periDraft.observaciones = val('peri_observaciones');
+  PERI_MECANICA.forEach((l, i) => periDraft.mecanica[l] = { estado: val(`peri_mecanica_${i}_estado`), nota: val(`peri_mecanica_${i}_nota`), costo: val(`peri_mecanica_${i}_costo`) });
+  PERI_INTERIOR.forEach((l, i) => periDraft.interior[l] = { estado: val(`peri_interior_${i}_estado`), nota: val(`peri_interior_${i}_nota`), costo: val(`peri_interior_${i}_costo`) });
+  PERI_EQUIP.forEach((l, i) => periDraft.equipamiento[l] = chk(`peri_eq_${i}`));
+  PERI_DOCS.forEach((l, i) => periDraft.documentacion[l] = chk(`peri_doc_${i}`));
+  periDraft.neumaticos.marca = val('peri_neum_marca');
+  PERI_NEUM.forEach(([k]) => periDraft.neumaticos[k] = val(`peri_neum_${k}`));
+  periDraft.danios = periDraft.danios.map((_, i) => ({
+    ubicacion: val(`peri_dn_${i}_ubic`), tipo: val(`peri_dn_${i}_tipo`), desc: val(`peri_dn_${i}_desc`), costo: val(`peri_dn_${i}_costo`)
+  }));
+}
+function agregarDanioPeri() {
+  _harvestPeritajeForm();
+  periDraft.danios.push({ ubicacion: '', tipo: '', desc: '', costo: '' });
+  rerenderDetalle();
+}
+function quitarDanioPeri(i) {
+  _harvestPeritajeForm();
+  periDraft.danios.splice(i, 1);
+  rerenderDetalle();
+}
+
+// ── Guardar: separa cualitativo (analisis_fisico) de montos (peritaje_costos) ──
+async function guardarPeritaje() {
+  _harvestPeritajeForm();
+  const d = periDraft;
+  const t = detalleActual.t;
+
+  const af = {
+    estado_general: d.estado_general || null, nro_motor: d.nro_motor || null, nro_chasis: d.nro_chasis || null,
+    km_entrega: d.km_entrega ? Number(d.km_entrega) : null, pintura: d.pintura || null, pintura_obs: d.pintura_obs || null,
+    tapizado: d.tapizado || null, observaciones: d.observaciones || null,
+    mecanica: {}, interior: {}, equipamiento: {}, documentacion: {}, neumaticos: { marca: d.neumaticos.marca || null }, danios: []
+  };
+  const costos = { mecanica: {}, interior: {}, danios: [] };
+
+  PERI_MECANICA.forEach(l => {
+    const it = d.mecanica[l]; if (!it) return;
+    if (it.estado && it.estado !== 'bien' || it.nota) af.mecanica[l] = { estado: it.estado || 'bien', nota: it.nota || '' };
+    if (Number(it.costo) > 0) costos.mecanica[l] = Number(it.costo);
+  });
+  PERI_INTERIOR.forEach(l => {
+    const it = d.interior[l]; if (!it) return;
+    if (it.estado && it.estado !== 'bien' || it.nota) af.interior[l] = { estado: it.estado || 'bien', nota: it.nota || '' };
+    if (Number(it.costo) > 0) costos.interior[l] = Number(it.costo);
+  });
+  PERI_EQUIP.forEach(l => { if (d.equipamiento[l]) af.equipamiento[l] = true; });
+  PERI_DOCS.forEach(l => { if (d.documentacion[l]) af.documentacion[l] = true; });
+  PERI_NEUM.forEach(([k]) => { if (d.neumaticos[k]) af.neumaticos[k] = d.neumaticos[k]; });
+  d.danios.forEach(dn => {
+    if (!dn.ubicacion && !dn.tipo && !dn.desc && !dn.costo) return;
+    af.danios.push({ ubicacion: dn.ubicacion || null, tipo: dn.tipo || null, desc: dn.desc || null });
+    costos.danios.push(Number(dn.costo) || 0);
+  });
+  costos.total = _periTotal(costos);
+
+  // ¿Las reventas ya cotizaron? (precios_recibidos = al menos una). Si sí, re-cotización con bump de ronda.
+  const reCotiza = t.estado === 'precios_recibidos';
+
+  showLoading('Guardando peritaje...');
+  try {
+    const patch = {
+      analisis_fisico: af, peritaje_costos: costos, peritaje_cargado_at: new Date().toISOString()
+    };
+    if (reCotiza) {
+      patch.estado = 'en_reventa';
+      patch.ronda_actual = (Number(t.ronda_actual) || 1) + 1;
+      patch.enviada_a_reventas_at = new Date().toISOString();
+      patch.resumen_reventas_enviado_at = null;
+    }
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, patch);
+    if (reCotiza) {
+      notifyPeritajeAgregado(t);
+      showToast('Peritaje guardado. Reenviado a reventas para re-cotizar.', 'success');
+    } else {
+      showToast('Peritaje guardado ✓', 'success');
+    }
+    periDraft = null;
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al guardar el peritaje', 'error');
+  } finally { hideLoading(); }
+}
+
+// ── Sección de peritaje que ve la REVENTA (cualitativo, sin montos) ──
+function peritajeReventaSectionHTML(t) {
+  const af = t.analisis_fisico;
+  if (!af || typeof af !== 'object' || !Object.keys(af).length) return '';
+  const chips = (obj) => Object.keys(obj || {}).filter(k => obj[k]).join(' · ');
+  const itemList = (grupo) => {
+    const o = af[grupo] || {}; const ks = Object.keys(o);
+    if (!ks.length) return '';
+    return ks.map(k => `<div class="peri-ro-row"><span>${k}</span><span style="color:${_periItemEstColor(o[k].estado)};">${_periItemEstLabel(o[k].estado)}${o[k].nota ? ` — ${o[k].nota}` : ''}</span></div>`).join('');
+  };
+  const danios = (af.danios || []);
+  const neum = af.neumaticos || {};
+  const neumLine = PERI_NEUM.filter(([k]) => neum[k]).map(([k, l]) => `${l}: ${neum[k]}`).join(' · ');
+  const equip = chips(af.equipamiento);
+  const docs = chips(af.documentacion);
+  const mec = itemList('mecanica');
+  const intr = itemList('interior');
+
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">🔧 Peritaje físico</div>
+    <p style="font-size:12px; color:var(--grey-4); margin:-4px 0 10px;">Reveé tu precio considerando el estado real del vehículo.</p>
+    <div style="display:flex; gap:18px; flex-wrap:wrap;">
+      ${af.estado_general ? `<div class="detalle-field"><div class="detalle-field-label">Estado general</div><div class="detalle-field-value">${af.estado_general}</div></div>` : ''}
+      ${af.pintura ? `<div class="detalle-field"><div class="detalle-field-label">Pintura</div><div class="detalle-field-value">${af.pintura}${af.pintura_obs ? ` (${af.pintura_obs})` : ''}</div></div>` : ''}
+      ${af.tapizado ? `<div class="detalle-field"><div class="detalle-field-label">Tapizado</div><div class="detalle-field-value">${af.tapizado}</div></div>` : ''}
+      ${af.km_entrega ? `<div class="detalle-field"><div class="detalle-field-label">KM a la entrega</div><div class="detalle-field-value">${Number(af.km_entrega).toLocaleString('es-AR')}</div></div>` : ''}
+    </div>
+    ${danios.length ? `<div class="detalle-field-label" style="margin-top:12px;">🛠️ Daños observados</div>
+      ${danios.map(dn => `<div class="peri-ro-row"><span>${[dn.ubicacion, dn.tipo].filter(Boolean).join(' · ') || 'Daño'}</span><span style="color:var(--grey-4);">${dn.desc || ''}</span></div>`).join('')}` : ''}
+    ${mec ? `<div class="detalle-field-label" style="margin-top:12px;">🔩 Mecánica (ítems con observación)</div>${mec}` : ''}
+    ${intr ? `<div class="detalle-field-label" style="margin-top:12px;">🪑 Interior (ítems con observación)</div>${intr}` : ''}
+    ${neumLine ? `<div class="detalle-field-label" style="margin-top:12px;">🛞 Neumáticos</div><div class="detalle-field-value">${neum.marca ? neum.marca + ' — ' : ''}${neumLine}</div>` : ''}
+    ${equip ? `<div class="detalle-field-label" style="margin-top:12px;">⚙️ Equipamiento</div><div class="detalle-field-value">${equip}</div>` : ''}
+    ${docs ? `<div class="detalle-field-label" style="margin-top:12px;">📄 Documentación</div><div class="detalle-field-value">${docs}</div>` : ''}
+    ${af.observaciones ? `<div class="detalle-field-label" style="margin-top:12px;">📝 Observaciones</div><div class="detalle-comment">${af.observaciones}</div>` : ''}
+  </div>`;
+}
+
+// ── Hoja imprimible del peritaje (admin) con cláusula legal ──
+function imprimirPeritaje(tasId) {
+  const t = (adminTasacionesData || []).find(x => x.id === tasId) || detalleActual?.t;
+  if (!t || !_tienePeritaje(t)) { showToast('No hay peritaje para imprimir', 'error'); return; }
+  const af = t.analisis_fisico, co = t.peritaje_costos || {};
+  const total = _periTotal(co);
+  const fila = (a, b) => `<tr><td>${a}</td><td>${b || '—'}</td></tr>`;
+  const danios = (af.danios || []).map((dn, i) => `<tr><td>${[dn.ubicacion, dn.tipo].filter(Boolean).join(' · ')}</td><td>${dn.desc || ''}</td><td style="text-align:right;">${formatARS((co.danios || [])[i] || 0)}</td></tr>`).join('');
+  const itemRows = (grupo) => Object.keys(af[grupo] || {}).map(k => `<tr><td>${k}</td><td>${_periItemEstLabel(af[grupo][k].estado)}${af[grupo][k].nota ? ` — ${af[grupo][k].nota}` : ''}</td><td style="text-align:right;">${formatARS((co[grupo] || {})[k] || 0)}</td></tr>`).join('');
+  const equip = Object.keys(af.equipamiento || {}).filter(k => af.equipamiento[k]).join(' · ') || '—';
+  const docs = Object.keys(af.documentacion || {}).filter(k => af.documentacion[k]).join(' · ') || '—';
+  const neum = af.neumaticos || {};
+  const neumLine = PERI_NEUM.filter(([k]) => neum[k]).map(([k, l]) => `${l}: ${neum[k]}`).join(' · ') || '—';
+
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Peritaje — ${t.usado_marca} ${t.usado_modelo}</title>
+  <style>
+    @page { size: A4; margin: 14mm; }
+    body { font-family: Arial, sans-serif; color:#111; font-size:12px; }
+    h1 { font-size:18px; margin:0 0 2px; } .sub { color:#555; margin-bottom:12px; }
+    table { width:100%; border-collapse:collapse; margin-bottom:12px; }
+    td, th { border:1px solid #ccc; padding:5px 7px; text-align:left; vertical-align:top; }
+    th { background:#f0f0f0; } h2 { font-size:13px; margin:14px 0 4px; border-bottom:2px solid #111; padding-bottom:2px; }
+    .total { font-size:14px; font-weight:bold; text-align:right; margin-top:6px; }
+    .legal { margin-top:18px; font-size:10px; color:#444; border-top:1px solid #ccc; padding-top:8px; }
+    .firmas { display:flex; justify-content:space-between; margin-top:40px; }
+    .firma { width:45%; border-top:1px solid #111; padding-top:4px; text-align:center; font-size:10px; }
+  </style></head><body>
+    <h1>PERITAJE TÉCNICO DE UNIDAD USADA — ArgenDreams</h1>
+    <div class="sub">#${t.id.substring(0, 8)} · ${formatFechaCorta(t.peritaje_cargado_at || t.created_at)}</div>
+    <table>
+      ${fila('Vehículo', `${t.usado_marca || ''} ${t.usado_modelo || ''} ${t.usado_anio || ''} ${t.usado_version || ''}`)}
+      ${fila('Kilómetros', `${(t.usado_km || 0).toLocaleString('es-AR')} km${af.km_entrega ? ` (a la entrega: ${Number(af.km_entrega).toLocaleString('es-AR')})` : ''}`)}
+      ${fila('Color', t.usado_color)} ${fila('Provincia', t.usado_provincia)}
+      ${fila('Estado general', af.estado_general)} ${fila('Pintura', `${af.pintura || '—'}${af.pintura_obs ? ` (${af.pintura_obs})` : ''}`)}
+      ${fila('Tapizado', af.tapizado)} ${fila('N° de motor', af.nro_motor)} ${fila('N° de chasis', af.nro_chasis)}
+    </table>
+    <h2>Mecánica</h2><table><tr><th>Ítem</th><th>Estado / observación</th><th style="text-align:right;">Arreglo</th></tr>${itemRows('mecanica') || '<tr><td colspan="3">Sin observaciones.</td></tr>'}</table>
+    <h2>Interior</h2><table><tr><th>Ítem</th><th>Estado / observación</th><th style="text-align:right;">Arreglo</th></tr>${itemRows('interior') || '<tr><td colspan="3">Sin observaciones.</td></tr>'}</table>
+    <h2>Carrocería — daños</h2><table><tr><th>Ubicación / tipo</th><th>Descripción</th><th style="text-align:right;">Arreglo</th></tr>${danios || '<tr><td colspan="3">Sin daños marcados.</td></tr>'}</table>
+    <h2>Equipamiento</h2><p>${equip}</p>
+    <h2>Neumáticos</h2><p>${neum.marca ? neum.marca + ' — ' : ''}${neumLine}</p>
+    <h2>Documentación</h2><p>${docs}</p>
+    ${af.observaciones ? `<h2>Observaciones</h2><p>${af.observaciones}</p>` : ''}
+    <div class="total">Total de arreglos estimado: ${formatARS(total)}</div>
+    <div class="legal"><strong>IMPORTANTE:</strong> Esta cotización se mantendrá vigente siempre y cuando el vehículo esté conforme con este peritaje el día de la entrega del mismo.</div>
+    <div class="firmas"><div class="firma">Firma del inspector</div><div class="firma">Firma del cliente</div></div>
+  </body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Habilitá las ventanas emergentes para imprimir', 'error'); return; }
+  w.document.write(html); w.document.close();
+  w.onload = () => { w.focus(); w.print(); };
 }
 
 // ═════════════════════════════════════════════════════════════════

@@ -121,6 +121,21 @@ Hola {{1}}, ¡operación confirmada! El usado {{2}} se toma a tu precio de {{3}}
 
 ---
 
+## 9. `peritaje_agregado` → a CADA REVENTA
+Cuando el admin (Agustín) carga el **peritaje físico** de una unidad que ya estaba en
+reventas con precios cargados. Bumpea la ronda → las reventas re-cotizan con el peritaje a
+la vista. **No reusa `pedido_mejora`** a propósito: el peritaje puede hacer que el precio
+**baje** (no es "mejorá"), es "reveé según el estado real".
+```
+Hola {{1}}, se cargó el peritaje físico de {{2}}. El estado real del vehículo puede cambiar tu precio de toma: ingresá a la plataforma y revisá tu oferta.
+```
+| Var | Contenido | Ejemplo |
+|---|---|---|
+| {{1}} | reventa | Carlos |
+| {{2}} | vehículo | VW T-Cross 2021 |
+
+---
+
 ## Eventos → template → destinatario
 
 | Evento (en la app) | Template | Destinatario | Disparo |
@@ -133,6 +148,7 @@ Hola {{1}}, ¡operación confirmada! El usado {{2}} se toma a tu precio de {{3}}
 | Admin pide mejora | `pedido_mejora` | reventas seleccionadas | botón (admin) |
 | Admin envía precio al vendedor | `precio_de_toma` | vendedor de la tasación | inmediato |
 | Admin **confirma** que se toma el usado | `usado_tomado` | reventa final | inmediato |
+| Admin carga **peritaje físico** con precios ya cargados | `peritaje_agregado` | reventas activas | inmediato (bump de ronda) |
 
 ---
 

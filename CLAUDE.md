@@ -124,6 +124,25 @@ Los modelos BYD y sus precios de lista USD viven en la **tabla Supabase `byd_mod
 
 **Pendiente de probar end-to-end:** el ranking (2D) necesita filas en `reventas_precios`, que las carga la **Fase 3 (vista reventa)** o un INSERT manual. La transición `en_reventa → precios_recibidos` se setea en Fase 3 cuando una reventa carga precio.
 
+## Peritaje físico (Fase 6) — IMPLEMENTADO
+
+Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/turno aparte; acá NO). El peritaje es una **capa encima de una tasación que ya existe** (no hay peritaje sin tasación). Base: módulo de Fazzini de tasador-tga, **sin** rol/turno/agenda, **enriquecido** con secciones de la hoja papel de Agustín (equipamiento, neumáticos x rueda, documentación, N° motor/chasis, estado general, cláusula legal).
+
+**Quién carga la unidad:** el vendedor (flujo normal) **o Agustín mismo** entrando en **Modo Vendedor** (ya tenía ese selector). En **físico directo** (traen el auto), Agustín la carga él y le hace el peritaje acto seguido.
+
+**Tres modos de tasación:**
+- **Físico directo** → Agustín carga peritaje en `pendiente_admin`, después "Enviar a reventas" (las reventas ya lo ven al cotizar). Sin bump.
+- **Virtual directo** → nunca se carga peritaje.
+- **Virtual → luego físico** → si las reventas ya cotizaron (`precios_recibidos`), guardar el peritaje **bumpea `ronda_actual+1`** (vuelve a `en_reventa`, histórico por `ronda`) y dispara el aviso **`peritaje_agregado`** (NO `pedido_mejora` — el peritaje puede bajar el precio, no es "mejorá"). Las reventas re-cotizan con el peritaje a la vista.
+
+**Separación de datos (clave de seguridad):** dos columnas JSONB en `tasaciones`:
+- `analisis_fisico` = **cualitativo** (daños sin monto, estados mecánica/interior, equipamiento, neumáticos, documentación, N° motor/chasis, estado general, pintura, observaciones). **Lo ve la reventa** (lo incluye en su SELECT).
+- `peritaje_costos` = **montos** de arreglo (por ítem/daño + total). **Solo admin** — la reventa NO lo pide en su SELECT (mismo criterio que precio ofrecido / IA / CCA).
+
+**Funciones clave en `index.html`:** `abrirPeritajeForm`/`cancelarPeritajeForm`, `peritajeFormHTML` (form data-driven desde constantes `PERI_*`), `_harvestPeritajeForm` (lee el DOM al draft `periDraft` antes de re-render para no perder lo tipeado), `agregarDanioPeri`/`quitarDanioPeri`, `guardarPeritaje` (separa `analisis_fisico` de `peritaje_costos`, bumpea ronda si `precios_recibidos`), `peritajeAdminBlockHTML` (resumen + botón Cargar/Editar en la vista admin), `peritajeReventaSectionHTML` (lo cualitativo que ve la reventa), `imprimirPeritaje` (hoja A4 con cláusula legal), `notifyPeritajeAgregado`. Badge reventa: `_reCotizaPorPeritaje` → "🔧 Re-cotizá — peritaje".
+
+**Pendiente WhatsApp:** crear el template `peritaje_agregado` (#9) en Meta (UTILITY, es_AR, 2 vars). Hasta entonces el aviso es **in-app** (badge + cartel en el detalle). La migration es `009_peritaje.sql`.
+
 ## Sheets externas que usa la app
 
 | Origen | URL/ID | Qué tiene |
@@ -151,6 +170,9 @@ Los modelos BYD y sus precios de lista USD viven en la **tabla Supabase `byd_mod
 - byd_modelo, byd_version, byd_precio_lista
 - precio_ofrecido_cliente, **precio_ofrecido_moneda** (default USD, migration 002), stock_entrega_rapida
 - fotos (text[])
+- **analisis_fisico** (jsonb, migration 009) — peritaje cualitativo, lo ve la reventa
+- **peritaje_costos** (jsonb, migration 009) — montos de arreglo, solo admin
+- **peritaje_cargado_at** (timestamptz, migration 009)
 - estado, resultado, descuento_pct_admin (default 9), precio_final_admin, ronda_actual
 - analisis_ia_resumen, analisis_ia_detalle (jsonb), analisis_ia_descuento, analisis_ia_estado
 - created_at, updated_at (con trigger)
@@ -272,9 +294,10 @@ C:\proyectos\tasador-argendreams\
         ├── 003_byd_modelos.sql ← corrida (tabla byd_modelos)
         ├── 004_reventa_ganadora.sql ← corrida (tasaciones.reventa_ganadora_id = referencia)
         ├── 005_mejora_solicitada.sql ← corrida (reventas_precios.mejora_solicitada)
-        └── 006_reventa_final.sql ← corrida (cliente_acepto, reventa_final_id, reventa_final_precio)
+        ├── 006_reventa_final.sql ← corrida (cliente_acepto, reventa_final_id, reventa_final_precio)
+        └── 009_peritaje.sql ← ⏳ POR CORRER (analisis_fisico, peritaje_costos, peritaje_cargado_at)
 
-**Migrations 001–006 todas corridas en Supabase.**
+**Migrations 001–006 corridas en Supabase. 009 (peritaje) pendiente de correr.**
 
 ## Estado de deploy / infra (2026-05-27)
 - **ONLINE** en `http://tasador.argendreams.online` (GitHub Pages, repo PÚBLICO `github.com/fergonz00/tasador-argendreams`, rama `master`, archivo `CNAME`).
@@ -353,5 +376,6 @@ Si hay errores recurrentes con código `132001` (template not found in language)
 | `notifyPrecioDeToma` | `precio_de_toma` | vendedor | admin envía precio al vendedor |
 | `notifyRecordatorioPrecio` | `recordatorio_precio` | 1 reventa puntual | botón "Recordar" del admin |
 | `notifyUsadoTomado` | `usado_tomado` | reventa_final | admin confirma toma |
+| `notifyPeritajeAgregado` | `peritaje_agregado` | todas las reventas activas | admin carga peritaje con precios ya cargados (bump de ronda) |
 | (cron `pg_cron`) | `resumen_reventas` | admin | +1h después de "enviar a reventas" |
 ```
