@@ -141,7 +141,7 @@ Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/tur
 
 **Funciones clave en `index.html`:** `abrirPeritajeForm`/`cancelarPeritajeForm`, `peritajeFormHTML` (form data-driven desde constantes `PERI_*`), `_harvestPeritajeForm` (lee el DOM al draft `periDraft` antes de re-render para no perder lo tipeado), `agregarDanioPeri`/`quitarDanioPeri`, `guardarPeritaje` (separa `analisis_fisico` de `peritaje_costos`, bumpea ronda si `precios_recibidos`), `peritajeAdminBlockHTML` (resumen + botón Cargar/Editar en la vista admin), `peritajeReventaSectionHTML` (lo cualitativo que ve la reventa), `imprimirPeritaje` (hoja A4 con cláusula legal), `notifyPeritajeAgregado`. Badge reventa: `_reCotizaPorPeritaje` → "🔧 Re-cotizá — peritaje".
 
-**Estado:** código deployado a producción (commit `7eee7b4`, master) y migration `009_peritaje.sql` corrida (2026-06-02). **Pendiente WhatsApp:** crear el template `peritaje_agregado` (#9) en Meta (UTILITY, es_AR, 2 vars). Hasta entonces el aviso es **in-app** (badge + cartel en el detalle).
+**Estado:** código deployado a producción (commit `7eee7b4`, master) y migration `009_peritaje.sql` corrida (2026-06-02). Template `peritaje_agregado` (#9) **creado y activo en Meta** (2026-06-02, UTILITY, es_AR, 2 vars). El aviso por WhatsApp sale automáticamente **una vez que la Fase 5 esté operativa** (Edge Function `notify-whatsapp` deployada + secrets cargados + número Meta aprobado). Hasta entonces el aviso es **in-app** (badge + cartel en el detalle) — y no se pierde nada.
 
 ## Sheets externas que usa la app
 

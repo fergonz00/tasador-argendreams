@@ -121,7 +121,7 @@ Hola {{1}}, ¡operación confirmada! El usado {{2}} se toma a tu precio de {{3}}
 
 ---
 
-## 9. `peritaje_agregado` → a CADA REVENTA
+## 9. `peritaje_agregado` → a CADA REVENTA  ✅ creado y activo en Meta (2026-06-02)
 Cuando el admin (Agustín) carga el **peritaje físico** de una unidad que ya estaba en
 reventas con precios cargados. Bumpea la ronda → las reventas re-cotizan con el peritaje a
 la vista. **No reusa `pedido_mejora`** a propósito: el peritaje puede hacer que el precio
