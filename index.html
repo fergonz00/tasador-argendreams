@@ -545,9 +545,16 @@ input, select, textarea { font-family: var(--font); }
 }
 .peri-row-label { flex: 1 1 130px; font-size: 13px; font-weight: 600; min-width: 110px; }
 .peri-row select, .peri-row input { flex: 1 1 120px; }
-.peri-danio { padding: 10px; border: 1.5px solid var(--grey-2); border-radius: 8px; background: white; }
-.peri-danio-grid { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.peri-danio-grid select { flex: 1 1 130px; }
+.peri-marcador-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px; background: var(--grey-1); border-radius: 8px; margin-bottom: 6px;
+}
+.peri-marcador-row select { flex: 1 1 130px; }
+.peri-marcador-row input[type=text], .peri-marcador-row > input:not([type=number]) { flex: 1 1 140px; }
+.peri-marcador-num {
+  width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: white;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0;
+}
 .peri-ro-row {
   display: flex; justify-content: space-between; gap: 12px; font-size: 13px;
   padding: 6px 0; border-bottom: 1px solid var(--grey-2);
@@ -2651,6 +2658,8 @@ async function cargarRelacionados(t, modo) {
 function rerenderDetalle() {
   document.getElementById('detalleModal').innerHTML =
     renderDetalleHTML(detalleActual.t, detalleActual.modo);
+  // Si está abierto el form de peritaje, dibujar los marcadores sobre la silueta
+  if (detalleActual && detalleActual.vistaPeritaje) renderPeriMarcadores();
 }
 
 // ── Router de acciones según estado ──
@@ -3317,7 +3326,7 @@ function _periTotal(costos) {
   if (!costos || typeof costos !== 'object') return 0;
   let tot = 0;
   ['mecanica', 'interior'].forEach(g => { const o = costos[g] || {}; Object.keys(o).forEach(k => tot += Number(o[k]) || 0); });
-  (costos.danios || []).forEach(c => tot += Number(c) || 0);
+  (costos.marcadores || []).forEach(c => tot += Number(c) || 0);
   return tot;
 }
 
@@ -3338,14 +3347,15 @@ function _periDraftFromTas(t) {
   const documentacion = {}; PERI_DOCS.forEach(l => documentacion[l] = !!(af.documentacion || {})[l]);
   const neumaticos = { marca: (af.neumaticos || {}).marca || '' };
   PERI_NEUM.forEach(([k]) => neumaticos[k] = (af.neumaticos || {})[k] || '');
-  const danios = (af.danios || []).map((d, i) => ({
-    ubicacion: d.ubicacion || '', tipo: d.tipo || '', desc: d.desc || '', costo: ((co.danios || [])[i]) ?? ''
+  // Marcadores sobre la silueta (x,y en % + tipo/desc) · costo viene de peritaje_costos
+  const marcadores = (af.marcadores || []).map((m, i) => ({
+    x: m.x, y: m.y, tipo: m.tipo || (PERI_DANIO_TIPO[0]), desc: m.desc || '', costo: ((co.marcadores || [])[i]) ?? ''
   }));
   return {
     estado_general: af.estado_general || '', nro_motor: af.nro_motor || '', nro_chasis: af.nro_chasis || '',
     km_entrega: af.km_entrega || '', pintura: af.pintura || '', pintura_obs: af.pintura_obs || '',
     tapizado: af.tapizado || '', observaciones: af.observaciones || '',
-    mecanica, interior, equipamiento, documentacion, neumaticos, danios
+    mecanica, interior, equipamiento, documentacion, neumaticos, marcadores
   };
 }
 
@@ -3370,7 +3380,7 @@ function peritajeAdminBlockHTML(t) {
   if (tiene) {
     const af = t.analisis_fisico;
     const total = _periTotal(t.peritaje_costos);
-    const nDanios = (af.danios || []).length;
+    const nDanios = (af.marcadores || []).length;
     const obs = af.observaciones ? `<div class="detalle-comment" style="margin-top:8px;">${af.observaciones}</div>` : '';
     resumen = `
       <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:6px;">
@@ -3426,16 +3436,7 @@ function peritajeFormHTML(t) {
       <select id="peri_neum_${k}" class="byd-in" style="margin:0;">${opt(PERI_NEUM_EST, d.neumaticos[k], 'Estado')}</select>
     </div>`).join('');
 
-  const danioRows = d.danios.map((dn, i) => `
-    <div class="peri-danio" id="peri_danio_${i}">
-      <div class="peri-danio-grid">
-        <select id="peri_dn_${i}_ubic" class="byd-in" style="margin:0;">${opt(PERI_DANIO_UBIC, dn.ubicacion, 'Ubicación')}</select>
-        <select id="peri_dn_${i}_tipo" class="byd-in" style="margin:0;">${opt(PERI_DANIO_TIPO, dn.tipo, 'Tipo de daño')}</select>
-        <input id="peri_dn_${i}_costo" class="byd-in" style="margin:0; max-width:130px;" type="number" min="0" step="10000" placeholder="$ arreglo" value="${dn.costo}">
-        <button class="det-btn ghost" style="flex:0 0 auto; min-width:0; padding:6px 12px;" onclick="quitarDanioPeri(${i})">✕</button>
-      </div>
-      <input id="peri_dn_${i}_desc" class="byd-in" style="margin:6px 0 0;" placeholder="Descripción del daño" value="${escAttr(dn.desc)}">
-    </div>`).join('');
+  const carImg = new URL('assets/car-vistas.png', window.location.href).href;
 
   return `<div class="detalle-section" id="peritajeForm">
     <div class="detalle-section-title">🔧 Peritaje físico de la unidad</div>
@@ -3457,11 +3458,17 @@ function peritajeFormHTML(t) {
     <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">🪑 Interior</div>
     <div class="peri-list">${checklistRows('interior', PERI_INTERIOR)}</div>
 
-    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">🛠️ Carrocería — daños</div>
-    <div id="periDaniosList" class="peri-list">${danioRows || '<div class="detalle-field-value muted">Sin daños marcados.</div>'}</div>
-    <button class="det-btn outline" style="margin-top:8px;" onclick="agregarDanioPeri()">➕ Agregar daño</button>
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">🛠️ Carrocería — marcá los daños sobre el auto</div>
+    <p style="font-size:12px; color:var(--grey-4); margin:-2px 0 10px;">Tocá la silueta donde veas un detalle. Después elegís el tipo y ponés una nota corta + el costo de arreglo.</p>
+    <div id="periCarImgWrap" style="position:relative; display:inline-block; max-width:100%; border:1.5px solid var(--grey-2); border-radius:8px; overflow:hidden; user-select:none;">
+      <img id="periCarImg" src="${carImg}" style="display:block; width:100%; max-width:720px; height:auto; cursor:crosshair;" onclick="onPeriCarImgClick(event)" draggable="false">
+    </div>
+    <div id="periMarcadoresList" style="margin-top:10px;"></div>
 
-    <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">⚙️ Equipamiento</div>
+    <div class="detalle-section-title" style="font-size:14px; margin-top:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">⚙️ Equipamiento
+      <button class="det-btn outline" style="flex:0 0 auto; min-width:0; padding:4px 10px; font-size:12px;" onclick="periEquipTodos(true)">✓ Tildar todos</button>
+      <button class="det-btn ghost" style="flex:0 0 auto; min-width:0; padding:4px 10px; font-size:12px;" onclick="periEquipTodos(false)">Limpiar</button>
+    </div>
     <div class="campos-corregir">${equipChecks}</div>
 
     <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">🛞 Neumáticos</div>
@@ -3472,7 +3479,7 @@ function peritajeFormHTML(t) {
     <div class="campos-corregir">${docChecks}</div>
 
     <div class="detalle-section-title" style="font-size:14px; margin-top:16px;">📝 Observaciones generales</div>
-    <textarea id="peri_observaciones" placeholder="Faltantes, averías, comentarios para las reventas...">${d.observaciones || ''}</textarea>
+    <textarea id="peri_observaciones" style="min-height:160px; resize:none; width:100%; box-sizing:border-box;" placeholder="Faltantes, averías, estado general, comentarios para las reventas...">${d.observaciones || ''}</textarea>
 
     <div class="detalle-actions" style="margin-top:18px;">
       <button class="det-btn ghost" onclick="cancelarPeritajeForm()">Cancelar</button>
@@ -3500,19 +3507,63 @@ function _harvestPeritajeForm() {
   PERI_DOCS.forEach((l, i) => periDraft.documentacion[l] = chk(`peri_doc_${i}`));
   periDraft.neumaticos.marca = val('peri_neum_marca');
   PERI_NEUM.forEach(([k]) => periDraft.neumaticos[k] = val(`peri_neum_${k}`));
-  periDraft.danios = periDraft.danios.map((_, i) => ({
-    ubicacion: val(`peri_dn_${i}_ubic`), tipo: val(`peri_dn_${i}_tipo`), desc: val(`peri_dn_${i}_desc`), costo: val(`peri_dn_${i}_costo`)
-  }));
+  // Los marcadores ya están en periDraft (se editan en vivo); no se leen del DOM acá.
 }
-function agregarDanioPeri() {
-  _harvestPeritajeForm();
-  periDraft.danios.push({ ubicacion: '', tipo: '', desc: '', costo: '' });
-  rerenderDetalle();
+
+// Tildar / limpiar todo el equipamiento de una
+function periEquipTodos(val) {
+  PERI_EQUIP.forEach((l, i) => {
+    const el = document.getElementById(`peri_eq_${i}`);
+    if (el) { el.checked = val; const lbl = el.closest('.campo-check'); if (lbl) lbl.classList.toggle('checked', val); }
+    if (periDraft) periDraft.equipamiento[l] = val;
+  });
 }
-function quitarDanioPeri(i) {
-  _harvestPeritajeForm();
-  periDraft.danios.splice(i, 1);
-  rerenderDetalle();
+
+// ── Marcadores sobre la silueta (estilo Fazzini) — se editan en vivo sin re-render completo ──
+function onPeriCarImgClick(event) {
+  const img = document.getElementById('periCarImg');
+  if (!img || !periDraft) return;
+  const rect = img.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * 100;
+  const y = ((event.clientY - rect.top) / rect.height) * 100;
+  if (x < 0 || x > 100 || y < 0 || y > 100) return;
+  periDraft.marcadores.push({ x, y, tipo: PERI_DANIO_TIPO[0], desc: '', costo: '' });
+  renderPeriMarcadores();
+}
+function actualizarMarcadorPeri(idx, campo, valor) {
+  if (!periDraft || !periDraft.marcadores[idx]) return;
+  periDraft.marcadores[idx][campo] = valor;
+}
+function borrarMarcadorPeri(idx) {
+  if (!periDraft) return;
+  periDraft.marcadores.splice(idx, 1);
+  renderPeriMarcadores();
+}
+// Dibuja los círculos sobre la imagen + la lista editable (sin tocar el resto del form)
+function renderPeriMarcadores() {
+  const wrap = document.getElementById('periCarImgWrap');
+  const list = document.getElementById('periMarcadoresList');
+  if (!wrap || !list || !periDraft) return;
+  [...wrap.querySelectorAll('.peri-marcador')].forEach(el => el.remove());
+  const ms = periDraft.marcadores || [];
+  ms.forEach((m, idx) => {
+    const div = document.createElement('div');
+    div.className = 'peri-marcador';
+    div.style.cssText = `position:absolute; left:${m.x}%; top:${m.y}%; transform:translate(-50%,-50%); width:26px; height:26px; border-radius:50%; background:var(--accent); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; border:2px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3);`;
+    div.textContent = idx + 1;
+    wrap.appendChild(div);
+  });
+  if (!ms.length) { list.innerHTML = '<div class="detalle-field-value muted" style="margin-top:6px;">Sin daños marcados — tocá la silueta para agregar uno.</div>'; return; }
+  list.innerHTML = ms.map((m, idx) => `
+    <div class="peri-marcador-row">
+      <div class="peri-marcador-num">${idx + 1}</div>
+      <select class="byd-in" style="margin:0;" onchange="actualizarMarcadorPeri(${idx}, 'tipo', this.value)">
+        ${PERI_DANIO_TIPO.map(tp => `<option value="${escAttr(tp)}" ${tp === m.tipo ? 'selected' : ''}>${tp}</option>`).join('')}
+      </select>
+      <input class="byd-in" style="margin:0;" placeholder="Descripción" value="${escAttr(m.desc)}" oninput="actualizarMarcadorPeri(${idx}, 'desc', this.value)">
+      <input class="byd-in" style="margin:0; max-width:120px;" type="number" min="0" step="10000" placeholder="$ arreglo" value="${m.costo}" oninput="actualizarMarcadorPeri(${idx}, 'costo', this.value)">
+      <button class="det-btn ghost" style="flex:0 0 auto; min-width:0; padding:6px 12px;" onclick="borrarMarcadorPeri(${idx})">✕</button>
+    </div>`).join('');
 }
 
 // ── Guardar: separa cualitativo (analisis_fisico) de montos (peritaje_costos) ──
@@ -3525,9 +3576,9 @@ async function guardarPeritaje() {
     estado_general: d.estado_general || null, nro_motor: d.nro_motor || null, nro_chasis: d.nro_chasis || null,
     km_entrega: d.km_entrega ? Number(d.km_entrega) : null, pintura: d.pintura || null, pintura_obs: d.pintura_obs || null,
     tapizado: d.tapizado || null, observaciones: d.observaciones || null,
-    mecanica: {}, interior: {}, equipamiento: {}, documentacion: {}, neumaticos: { marca: d.neumaticos.marca || null }, danios: []
+    mecanica: {}, interior: {}, equipamiento: {}, documentacion: {}, neumaticos: { marca: d.neumaticos.marca || null }, marcadores: []
   };
-  const costos = { mecanica: {}, interior: {}, danios: [] };
+  const costos = { mecanica: {}, interior: {}, marcadores: [] };
 
   PERI_MECANICA.forEach(l => {
     const it = d.mecanica[l]; if (!it) return;
@@ -3542,10 +3593,9 @@ async function guardarPeritaje() {
   PERI_EQUIP.forEach(l => { if (d.equipamiento[l]) af.equipamiento[l] = true; });
   PERI_DOCS.forEach(l => { if (d.documentacion[l]) af.documentacion[l] = true; });
   PERI_NEUM.forEach(([k]) => { if (d.neumaticos[k]) af.neumaticos[k] = d.neumaticos[k]; });
-  d.danios.forEach(dn => {
-    if (!dn.ubicacion && !dn.tipo && !dn.desc && !dn.costo) return;
-    af.danios.push({ ubicacion: dn.ubicacion || null, tipo: dn.tipo || null, desc: dn.desc || null });
-    costos.danios.push(Number(dn.costo) || 0);
+  (d.marcadores || []).forEach(m => {
+    af.marcadores.push({ x: m.x, y: m.y, tipo: m.tipo || null, desc: m.desc || null });
+    costos.marcadores.push(Number(m.costo) || 0);
   });
   costos.total = _periTotal(costos);
 
@@ -3588,13 +3638,19 @@ function peritajeReventaSectionHTML(t) {
     if (!ks.length) return '';
     return ks.map(k => `<div class="peri-ro-row"><span>${k}</span><span style="color:${_periItemEstColor(o[k].estado)};">${_periItemEstLabel(o[k].estado)}${o[k].nota ? ` — ${o[k].nota}` : ''}</span></div>`).join('');
   };
-  const danios = (af.danios || []);
+  const marcadores = (af.marcadores || []);
   const neum = af.neumaticos || {};
   const neumLine = PERI_NEUM.filter(([k]) => neum[k]).map(([k, l]) => `${l}: ${neum[k]}`).join(' · ');
   const equip = chips(af.equipamiento);
   const docs = chips(af.documentacion);
   const mec = itemList('mecanica');
   const intr = itemList('interior');
+  const carImg = new URL('assets/car-vistas.png', window.location.href).href;
+  const siluetaHTML = marcadores.length ? `
+    <div style="position:relative; display:inline-block; max-width:100%; border:1.5px solid var(--grey-2); border-radius:8px; overflow:hidden; margin-top:6px;">
+      <img src="${carImg}" style="display:block; width:100%; max-width:640px; height:auto;">
+      ${marcadores.map((m, i) => `<div style="position:absolute; left:${m.x}%; top:${m.y}%; transform:translate(-50%,-50%); width:24px; height:24px; border-radius:50%; background:var(--accent); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px; border:2px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${i + 1}</div>`).join('')}
+    </div>` : '';
 
   return `<div class="detalle-section">
     <div class="detalle-section-title">🔧 Peritaje físico</div>
@@ -3605,8 +3661,9 @@ function peritajeReventaSectionHTML(t) {
       ${af.tapizado ? `<div class="detalle-field"><div class="detalle-field-label">Tapizado</div><div class="detalle-field-value">${af.tapizado}</div></div>` : ''}
       ${af.km_entrega ? `<div class="detalle-field"><div class="detalle-field-label">KM a la entrega</div><div class="detalle-field-value">${Number(af.km_entrega).toLocaleString('es-AR')}</div></div>` : ''}
     </div>
-    ${danios.length ? `<div class="detalle-field-label" style="margin-top:12px;">🛠️ Daños observados</div>
-      ${danios.map(dn => `<div class="peri-ro-row"><span>${[dn.ubicacion, dn.tipo].filter(Boolean).join(' · ') || 'Daño'}</span><span style="color:var(--grey-4);">${dn.desc || ''}</span></div>`).join('')}` : ''}
+    ${marcadores.length ? `<div class="detalle-field-label" style="margin-top:12px;">🛠️ Daños marcados sobre el auto</div>
+      ${siluetaHTML}
+      ${marcadores.map((m, i) => `<div class="peri-ro-row"><span>${i + 1}. ${m.tipo || 'Daño'}</span><span style="color:var(--grey-4);">${m.desc || ''}</span></div>`).join('')}` : ''}
     ${mec ? `<div class="detalle-field-label" style="margin-top:12px;">🔩 Mecánica (ítems con observación)</div>${mec}` : ''}
     ${intr ? `<div class="detalle-field-label" style="margin-top:12px;">🪑 Interior (ítems con observación)</div>${intr}` : ''}
     ${neumLine ? `<div class="detalle-field-label" style="margin-top:12px;">🛞 Neumáticos</div><div class="detalle-field-value">${neum.marca ? neum.marca + ' — ' : ''}${neumLine}</div>` : ''}
@@ -3623,7 +3680,10 @@ function imprimirPeritaje(tasId) {
   const af = t.analisis_fisico, co = t.peritaje_costos || {};
   const total = _periTotal(co);
   const fila = (a, b) => `<tr><td>${a}</td><td>${b || '—'}</td></tr>`;
-  const danios = (af.danios || []).map((dn, i) => `<tr><td>${[dn.ubicacion, dn.tipo].filter(Boolean).join(' · ')}</td><td>${dn.desc || ''}</td><td style="text-align:right;">${formatARS((co.danios || [])[i] || 0)}</td></tr>`).join('');
+  const carImg = new URL('assets/car-vistas.png', window.location.href).href;
+  const marcadores = (af.marcadores || []);
+  const danios = marcadores.map((m, i) => `<tr><td>${i + 1}. ${m.tipo || 'Daño'}</td><td>${m.desc || ''}</td><td style="text-align:right;">${formatARS((co.marcadores || [])[i] || 0)}</td></tr>`).join('');
+  const siluetaImpr = marcadores.length ? `<div style="position:relative; display:inline-block; max-width:520px;"><img src="${carImg}" style="width:100%; display:block;">${marcadores.map((m, i) => `<div style="position:absolute; left:${m.x}%; top:${m.y}%; transform:translate(-50%,-50%); width:20px; height:20px; border-radius:50%; background:#dc2626; color:white; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px; border:1.5px solid white;">${i + 1}</div>`).join('')}</div>` : '';
   const itemRows = (grupo) => Object.keys(af[grupo] || {}).map(k => `<tr><td>${k}</td><td>${_periItemEstLabel(af[grupo][k].estado)}${af[grupo][k].nota ? ` — ${af[grupo][k].nota}` : ''}</td><td style="text-align:right;">${formatARS((co[grupo] || {})[k] || 0)}</td></tr>`).join('');
   const equip = Object.keys(af.equipamiento || {}).filter(k => af.equipamiento[k]).join(' · ') || '—';
   const docs = Object.keys(af.documentacion || {}).filter(k => af.documentacion[k]).join(' · ') || '—';
@@ -3654,7 +3714,7 @@ function imprimirPeritaje(tasId) {
     </table>
     <h2>Mecánica</h2><table><tr><th>Ítem</th><th>Estado / observación</th><th style="text-align:right;">Arreglo</th></tr>${itemRows('mecanica') || '<tr><td colspan="3">Sin observaciones.</td></tr>'}</table>
     <h2>Interior</h2><table><tr><th>Ítem</th><th>Estado / observación</th><th style="text-align:right;">Arreglo</th></tr>${itemRows('interior') || '<tr><td colspan="3">Sin observaciones.</td></tr>'}</table>
-    <h2>Carrocería — daños</h2><table><tr><th>Ubicación / tipo</th><th>Descripción</th><th style="text-align:right;">Arreglo</th></tr>${danios || '<tr><td colspan="3">Sin daños marcados.</td></tr>'}</table>
+    <h2>Carrocería — daños</h2>${siluetaImpr}<table><tr><th>N° / tipo</th><th>Descripción</th><th style="text-align:right;">Arreglo</th></tr>${danios || '<tr><td colspan="3">Sin daños marcados.</td></tr>'}</table>
     <h2>Equipamiento</h2><p>${equip}</p>
     <h2>Neumáticos</h2><p>${neum.marca ? neum.marca + ' — ' : ''}${neumLine}</p>
     <h2>Documentación</h2><p>${docs}</p>
