@@ -301,9 +301,9 @@ C:\proyectos\tasador-argendreams\
         ├── 005_mejora_solicitada.sql ← corrida (reventas_precios.mejora_solicitada)
         ├── 006_reventa_final.sql ← corrida (cliente_acepto, reventa_final_id, reventa_final_precio)
         ├── 009_peritaje.sql ← corrida (analisis_fisico, peritaje_costos, peritaje_cargado_at)
-        └── 010_peritaje_fotos.sql ← ⏳ POR CORRER (peritaje_fotos text[])
+        └── 010_peritaje_fotos.sql ← corrida (peritaje_fotos text[])
 
-**Migrations 001–006 y 009 corridas. 010 (fotos del peritaje) pendiente de correr.**
+**Migrations 001–006, 009 y 010 corridas en Supabase.**
 
 ## Estado de deploy / infra (2026-05-27)
 - **ONLINE** en `http://tasador.argendreams.online` (GitHub Pages, repo PÚBLICO `github.com/fergonz00/tasador-argendreams`, rama `master`, archivo `CNAME`).
