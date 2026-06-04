@@ -277,7 +277,7 @@ git push origin main
 - **CSV de elcerokm sin headers**: el parser lee por posición fija (Marca, Modelo, Versión, Precio, Moneda, Actualizado). Si el orden cambia, romper
 - **VW NO está en el scraping**: por eso se carga `loadVW0km()` aparte (de la hoja VW de TGA). Sin granularidad de versión
 - **Migration 001 y 002 ya corridas** en Supabase
-- **Storage bucket `argendreams-fotos`** (público, 15MB, image/jpeg|png|webp|heic)
+- **Storage bucket `argendreams-fotos`** (público, 15MB, image/jpeg|png|webp|heic). El "público" solo permite LEER; para SUBIR hacían falta políticas en `storage.objects` (insert/select/update para anon) — migration `011` (2026-06-04). Sin eso toda subida de foto daba `403 new row violates row-level security policy`.
 
 ## Archivos del proyecto
 
@@ -301,9 +301,10 @@ C:\proyectos\tasador-argendreams\
         ├── 005_mejora_solicitada.sql ← corrida (reventas_precios.mejora_solicitada)
         ├── 006_reventa_final.sql ← corrida (cliente_acepto, reventa_final_id, reventa_final_precio)
         ├── 009_peritaje.sql ← corrida (analisis_fisico, peritaje_costos, peritaje_cargado_at)
-        └── 010_peritaje_fotos.sql ← corrida (peritaje_fotos text[])
+        ├── 010_peritaje_fotos.sql ← corrida (peritaje_fotos text[])
+        └── 011_storage_fotos_policies.sql ← corrida (políticas de subida al bucket argendreams-fotos)
 
-**Migrations 001–006, 009 y 010 corridas en Supabase.**
+**Migrations 001–006, 009, 010 y 011 corridas en Supabase.**
 
 ## Estado de deploy / infra (2026-05-27)
 - **ONLINE** en `http://tasador.argendreams.online` (GitHub Pages, repo PÚBLICO `github.com/fergonz00/tasador-argendreams`, rama `master`, archivo `CNAME`).
