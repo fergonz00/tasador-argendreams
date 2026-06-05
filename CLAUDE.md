@@ -124,6 +124,16 @@ Los modelos BYD y sus precios de lista USD viven en la **tabla Supabase `byd_mod
 
 **Pendiente de probar end-to-end:** el ranking (2D) necesita filas en `reventas_precios`, que las carga la **Fase 3 (vista reventa)** o un INSERT manual. La transición `en_reventa → precios_recibidos` se setea en Fase 3 cuando una reventa carga precio.
 
+## Referencia interna de toma — CCA + FMG (solo admin) — IMPLEMENTADO
+
+Bloque **"💲 Referencia interna de toma"** en el detalle del admin (gateado por `isAdmin`, después del "0km equivalente vigente"). Replica las dos fórmulas de **tasador-tga** (sin la manual de Kavak). **Todo se muestra en pesos** (el usado siempre se tasa en pesos).
+
+- **CCA** (aparece SIEMPRE, no necesita equivalente): `calcPrecioCCA(usado)` busca marca/modelo/versión/año en la planilla CCA (misma sheet). `MARCAS_USD=['BYD']` → BYD en USD, resto en pesos ×1000. `calcAjusteKm` (año base 2026, 15.000 km/año, 20.000 pickup, +12%…−18%). **Toma CCA = base × (1+ajuste/100) × 0,86** (−14%).
+- **FMG** (necesita 0km equivalente cargado): `calcFormulaFMG(t)` = `equiv_0km_precio / 1,05 / 1,09^años`. **Toma FMG = mercado × (1+ajuste/100) × 0,88** (−12%).
+- **Cotización USD** editable en el bloque (`_cotizUsd`, default `DEFAULT_COTIZ=1350`); `setCotizUsd` recalcula vía `rerenderDetalle()`. Pesifica BYD/USD (CCA BYD y equivalente USD).
+- Funciones en `index.html`: `getCotizUSD`/`setCotizUsd`, `esPesos`, `esPickup`, `calcPrecioCCA`, `calcAjusteKm`, `calcFormulaFMG`, `calcReferenciasAdmin`, `renderReferenciaInternaHTML`.
+- Es **solo referencia visual** — no se guarda en la tasación ni cambia el flujo de reventas. Commit en `master` (deployado).
+
 ## Peritaje físico (Fase 6) — IMPLEMENTADO
 
 Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/turno aparte; acá NO). El peritaje es una **capa encima de una tasación que ya existe** (no hay peritaje sin tasación). Base: módulo de Fazzini de tasador-tga, **sin** rol/turno/agenda, **enriquecido** con secciones de la hoja papel de Agustín (equipamiento, neumáticos x rueda, documentación, N° motor/chasis, estado general, cláusula legal).
