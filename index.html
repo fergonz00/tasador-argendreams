@@ -2786,8 +2786,8 @@ async function cargarRelacionados(t, modo) {
     out.reventasPrecios = await sbGet('reventas_precios',
       `?tasacion_id=eq.${t.id}&ronda=eq.${t.ronda_actual}&order=precio.desc&select=*,reventa:reventa_id(nombre,usuario)`);
   }
-  // Para "quiénes faltan": lista de reventas activas (cuando aún se está tasando)
-  if (['en_reventa', 'precios_recibidos'].includes(t.estado)) {
+  // Para "quiénes faltan": lista de reventas activas (mientras se puede seguir cargando precio)
+  if (['en_reventa', 'precios_recibidos', 'precio_al_vendedor'].includes(t.estado)) {
     out.reventasActivas = await sbGet('usuarios',
       '?rol=eq.reventa&activo=eq.true&select=id,nombre,usuario&order=usuario.asc');
   }
@@ -3010,7 +3010,7 @@ function rankingHTML(t) {
         <input type="radio" name="ganador" ${p.id === ganador.id ? 'checked' : ''}>
         <span class="ranking-pos">${i + 1}</span>
         <span class="ranking-info">
-          <span class="nom">${p.reventa?.nombre || p.reventa?.usuario || 'Reventa'} ${medals[i] || ''}</span>
+          <span class="nom">${p.reventa?.nombre || p.reventa?.usuario || 'Reventa'} ${medals[i] || ''} ${_esPosterior(p, t) ? _badgePost() : ''}</span>
           ${p.comentario ? `<span class="com">${p.comentario}</span>` : ''}
         </span>
         <span class="ranking-precio">${formatARS(p.precio)}</span>
@@ -3124,12 +3124,15 @@ async function enviarPrecioVendedor() {
   if (!confirm(`Vas a enviar al vendedor un precio de toma de ${formatARS(final)}.\n\nMejor oferta: ${formatARS(ganador.precio)}\nDescuento: ${desc}%\nMargen: ${formatARS(Number(ganador.precio) - final)}\n\n¿Confirmás?`)) return;
   showLoading('Enviando precio...');
   try {
-    await sbPatch('tasaciones', `?id=eq.${t.id}`, {
+    const patch = {
       estado: 'precio_al_vendedor',
       descuento_pct_admin: desc,
       precio_final_admin: final,
-      reventa_ganadora_id: ganador.reventa_id   // para avisarle a la reventa elegida
-    });
+      reventa_ganadora_id: ganador.reventa_id   // referencia: la que fijó el precio al cliente
+    };
+    // Anclar la fecha del PRIMER envío: define qué precios de reventa son "posteriores".
+    if (!t.precio_al_vendedor_at) patch.precio_al_vendedor_at = new Date().toISOString();
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, patch);
     showToast('Precio enviado al vendedor', 'success');
     notifyPrecioDeToma(t, final);
     cerrarDetalle();
@@ -3142,27 +3145,40 @@ async function enviarPrecioVendedor() {
 // ── Cierre (TOMADA / NO TOMADA) — admin o vendedor ──
 function precioEnviadoHTML(t, esAdmin) {
   const aceptado = t.cliente_acepto;
-  return `<div class="detalle-section">
+  const resumen = `<div class="detalle-section">
     <div class="detalle-section-title">✅ Precio enviado al vendedor</div>
     <div class="resumen-precio">
       <div class="rp-row"><span>Precio de toma (al cliente)</span><span class="rp-big">${formatARS(t.precio_final_admin)}</span></div>
       ${esAdmin ? `<div class="rp-row"><span class="rp-muted">Descuento aplicado</span><span>${t.descuento_pct_admin}%</span></div>` : ''}
     </div>
     ${aceptado ? `<div class="detalle-comment" style="margin-top:10px; background:var(--green-light); border-color:var(--green); color:var(--green);">✅ Precio aceptado — usado a tomar (OK por el vendedor)</div>` : ''}
-    ${esAdmin ? `
-      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">${aceptado ? 'El cliente aceptó. <strong>Confirmá con la reventa</strong> para cerrar y avisarle.' : 'Cuando el vendedor marque que el cliente aceptó, confirmá con la reventa. (Igual podés confirmar vos.)'}</p>
-      <div class="detalle-actions" style="margin-top:12px;">
-        <button class="det-btn green" onclick="abrirConfirmarToma()">✅ Confirmar con reventa</button>
-        <button class="det-btn red" onclick="cerrarNoTomada()">❌ No se concretó</button>
-      </div>
-    ` : `
-      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">${aceptado ? 'Ya marcaste que el cliente aceptó. El admin confirma con la reventa.' : 'Confirmá con el cliente y marcá el resultado.'}</p>
+  </div>`;
+
+  if (!esAdmin) {
+    return resumen + `<div class="detalle-section">
+      <p style="font-size:13px; color:var(--grey-4);">${aceptado ? 'Ya marcaste que el cliente aceptó. El admin confirma con la reventa.' : 'Confirmá con el cliente y marcá el resultado.'}</p>
       <div class="detalle-actions" style="margin-top:12px;">
         <button class="det-btn green" onclick="marcarClienteAcepto()" ${aceptado ? 'disabled' : ''}>✅ Precio aceptado</button>
         <button class="det-btn red" onclick="cerrarNoTomada()">❌ Cliente no aceptó</button>
       </div>
-    `}
-  </div>`;
+    </div>`;
+  }
+
+  // ADMIN: todos los precios de reventa (referencia + posteriores) + quiénes faltan + acciones
+  const precios = (detalleActual.reventasPrecios || []).slice().sort((a, b) => Number(b.precio) - Number(a.precio));
+  return resumen
+    + preciosReventaConPrecioHTML(t, precios)
+    + faltanHTML(t)
+    + `<div class="detalle-section">
+        <p style="font-size:13px; color:var(--grey-4);">${aceptado ? 'El cliente aceptó. <strong>Confirmá con la reventa</strong> para cerrar y avisarle.' : 'Cuando el vendedor marque que el cliente aceptó, confirmá con la reventa. (Igual podés confirmar vos.)'}</p>
+        <div class="detalle-actions" style="margin-top:12px;">
+          <button class="det-btn green" onclick="abrirConfirmarToma()">✅ Confirmar con reventa</button>
+          <button class="det-btn red" onclick="cerrarNoTomada()">❌ No se concretó</button>
+        </div>
+        <div class="detalle-actions" style="margin-top:10px;">
+          <button class="det-btn outline" onclick="volverAEtapaPrecios()">↩️ Volver a la etapa de precios (re-elegir / cambiar %)</button>
+        </div>
+      </div>`;
 }
 
 function cerradaHTML(t) {
@@ -3207,6 +3223,55 @@ async function cerrarNoTomada() {
     cerrarDetalle();
     if (modo === 'admin') await loadAdminTasaciones(); else await loadMisTasaciones();
   } catch (e) { console.error(e); showToast('Error al cerrar', 'error'); }
+  finally { hideLoading(); }
+}
+
+// ¿Este precio de reventa entró DESPUÉS de que se le pasó el precio al cliente?
+function _esPosterior(p, t) {
+  return !!(t.precio_al_vendedor_at && p.created_at &&
+    new Date(p.created_at) > new Date(t.precio_al_vendedor_at));
+}
+function _badgeRef()  { return '<span class="usr-rol-badge rol-admin" style="font-size:9px; letter-spacing:0;">REFERENCIA</span>'; }
+function _badgePost() { return '<span class="usr-rol-badge" style="font-size:9px; letter-spacing:0; background:var(--orange-light); color:var(--orange);">POSTERIOR</span>'; }
+
+// Lista de TODOS los precios de reventa en la solapa "Con precio" (solo admin).
+// Marca cuál fue la referencia (la que fijó el precio al cliente) y cuáles entraron después.
+function preciosReventaConPrecioHTML(t, precios) {
+  if (!precios.length) {
+    return `<div class="detalle-section">
+      <div class="detalle-section-title">📊 Precios de reventas</div>
+      <div class="detalle-field-value muted">Todavía no hay precios de reventas cargados.</div>
+    </div>`;
+  }
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">📊 Precios de reventas (${precios.length})</div>
+    ${precios.map(p => {
+      const esRef = p.reventa_id === t.reventa_ganadora_id;
+      const post = _esPosterior(p, t);
+      const nombre = p.reventa?.nombre || p.reventa?.usuario || 'Reventa';
+      return `<div class="ranking-row ${esRef ? 'ganador' : ''}" style="cursor:default;">
+        <span class="ranking-info">
+          <span class="nom">${nombre} ${esRef ? _badgeRef() : ''} ${post ? _badgePost() : ''}</span>
+          ${p.comentario ? `<span class="com">${p.comentario}</span>` : ''}
+          ${post ? `<span class="com" style="color:var(--orange);">📌 Cargó después de pasarle el precio al cliente</span>` : ''}
+        </span>
+        <span class="ranking-precio">${formatARS(p.precio)}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+// Volver a la etapa de precios para re-elegir reventa / cambiar el % (sin nueva ronda).
+async function volverAEtapaPrecios() {
+  const t = detalleActual.t;
+  if (!confirm('Volvés a la etapa de precios para re-elegir la reventa o cambiar el descuento.\n\nLos precios cargados se conservan. El precio actual al cliente queda en pausa hasta que reenvíes.\n\n¿Seguir?')) return;
+  showLoading('Volviendo a precios...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'precios_recibidos', cliente_acepto: false });
+    showToast('Volviste a la etapa de precios', 'success');
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) { console.error(e); showToast('Error al volver', 'error'); }
   finally { hideLoading(); }
 }
 
@@ -3315,7 +3380,7 @@ async function loadReventaTasaciones() {
     const sel = 'id,usado_marca,usado_modelo,usado_version,usado_anio,usado_km,usado_color,usado_provincia,fotos,estado,resultado,ronda_actual,reventa_final_id,reventa_final_precio,analisis_fisico,peritaje_fotos,peritaje_cargado_at,created_at';
     // Ve: las que están a tasar (en_reventa/precios_recibidos) + las que efectivamente se le tomaron a ella
     // (solo se entera si el admin le asignó la toma confirmada; nunca antes)
-    const orFiltro = `or=(estado.in.(en_reventa,precios_recibidos),and(reventa_final_id.eq.${currentUser.id},estado.eq.cerrada,resultado.eq.tomada))`;
+    const orFiltro = `or=(estado.in.(en_reventa,precios_recibidos,precio_al_vendedor),and(reventa_final_id.eq.${currentUser.id},estado.eq.cerrada,resultado.eq.tomada))`;
     reventaTasacionesData = await sbGet('tasaciones',
       `?${orFiltro}&order=created_at.desc&select=${sel}`);
     // Mis precios (de cualquier ronda) para saber cuáles ya tasé
@@ -3331,7 +3396,9 @@ async function loadReventaTasaciones() {
 }
 
 function _miPrecioDe(t) { return reventaMisPrecios[`${t.id}_${t.ronda_actual}`] || null; }
-function _esActivaReventa(t) { return ['en_reventa', 'precios_recibidos'].includes(t.estado); }
+// Activa = la reventa todavía puede cargar/actualizar precio. Solo deja de poder cuando
+// se cierra (se confirmó la toma y se avisó a la reventa elegida).
+function _esActivaReventa(t) { return ['en_reventa', 'precios_recibidos', 'precio_al_vendedor'].includes(t.estado); }
 function _gane(t) { return t.reventa_final_id === currentUser.id; }
 
 function _mejoraPedida(t) { const mp = _miPrecioDe(t); return !!(mp && mp.mejora_solicitada); }
