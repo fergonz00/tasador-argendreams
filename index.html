@@ -2695,7 +2695,45 @@ function renderAccionesAdmin(t) {
     case 'cerrada':           acciones = cerradaHTML(t); break;
     default:                  acciones = '';
   }
-  return peri + acciones;
+  return peri + acciones + godEliminarTasacionHTML(t);
+}
+
+// ── GOD: borrar una tasación en cualquier estado (solo superadmin fngonzalez) ──
+function godEliminarTasacionHTML(t) {
+  if (!_esSuperadmin()) return '';
+  return `
+    <div class="detalle-section" style="border:1px solid var(--red, #dc2626); border-radius:10px; background:#fef2f2; margin-top:18px;">
+      <div class="detalle-section-title" style="color:#dc2626;">⚠️ Zona peligrosa (god)</div>
+      <div class="detalle-field-value muted" style="margin-bottom:12px;">
+        Elimina la tasación de forma definitiva, sin importar el estado (incluso cerradas).
+        Borra también sus precios de reventa, comentarios y notas. No se puede deshacer.
+      </div>
+      <div class="detalle-actions">
+        <button class="det-btn red" onclick="eliminarTasacion('${t.id}')">🗑️ Eliminar tasación</button>
+      </div>
+    </div>`;
+}
+
+async function eliminarTasacion(id) {
+  if (!_esSuperadmin()) { showToast('Solo el administrador total puede eliminar tasaciones', 'error'); return; }
+  const t = (detalleActual && detalleActual.t && detalleActual.t.id === id) ? detalleActual.t : null;
+  const ref = t ? `${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} (${t.cliente_nombre || 's/cliente'})` : `#${id.substring(0,8)}`;
+  if (!confirm(`¿Eliminar definitivamente la tasación ${ref}?\n\nSe borran sus precios de reventa, comentarios y notas. Esta acción NO se puede deshacer.`)) return;
+  showLoading('Eliminando tasación...');
+  try {
+    // notificaciones_log referencia tasaciones SIN cascade → limpiar primero para no bloquear el delete.
+    try { await sbDelete('notificaciones_log', `?tasacion_id=eq.${id}`); } catch (e) { console.warn('limpieza notif_log', e); }
+    // reventas_precios / comentarios_admin / comentarios_reventa tienen ON DELETE CASCADE.
+    await sbDelete('tasaciones', `?id=eq.${id}`);
+    hideLoading();
+    showToast('Tasación eliminada', 'success');
+    cerrarDetalle();
+    if (typeof loadAdminTasaciones === 'function') loadAdminTasaciones();
+  } catch (e) {
+    hideLoading();
+    console.error(e);
+    showToast('No se pudo eliminar: ' + e.message, 'error');
+  }
 }
 
 function renderAccionesVendedor(t) {
