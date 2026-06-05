@@ -134,6 +134,19 @@ Bloque **"💲 Referencia interna de toma"** en el detalle del admin (gateado po
 - Funciones en `index.html`: `getCotizUSD`/`setCotizUsd`, `esPesos`, `esPickup`, `calcPrecioCCA`, `calcAjusteKm`, `calcFormulaFMG`, `calcReferenciasAdmin`, `renderReferenciaInternaHTML`.
 - Es **solo referencia visual** — no se guarda en la tasación ni cambia el flujo de reventas. Commit en `master` (deployado).
 
+## Solapa "Con precio" — precios de reventa visibles + volver atrás — IMPLEMENTADO
+
+Mejora del estado `precio_al_vendedor` (solapa "Con precio") para el admin:
+
+- **Todos los precios de reventa** de la ronda actual visibles (`preciosReventaConPrecioHTML`), marcando:
+  - **REFERENCIA** (`_badgeRef`) = la reventa cuyo precio fijó el que se pasó al cliente (`reventa_ganadora_id`).
+  - **POSTERIOR** (`_badgePost`, `_esPosterior`) = precios cargados *después* de pasarle el precio al cliente (`reventas_precios.created_at > tasaciones.precio_al_vendedor_at`).
+- **Quiénes no cargaron** precio: `faltanHTML(t)` (ahora `reventasActivas` se trae también en `precio_al_vendedor`).
+- **Las reventas siguen pudiendo cargar/actualizar precio** hasta que se **cierra la toma** (se confirma con la reventa elegida → `cerrada`). Implementado extendiendo `_esActivaReventa` y el `or=` de `loadReventaTasaciones` con `precio_al_vendedor`. Un precio nuevo de una reventa que no había cotizado entra como POSTERIOR (su `created_at` > el ancla).
+- **Volver atrás** (`volverAEtapaPrecios`): de `precio_al_vendedor` → `precios_recibidos` **sin bump de ronda** (conserva todos los precios, resetea `cliente_acepto`). El admin re-elige otra reventa más alta o cambia el %, y reenvía (mismo `enviarPrecioVendedor`, que pisa el precio). El ranking también muestra el badge POSTERIOR.
+- **Columna nueva** `tasaciones.precio_al_vendedor_at` (timestamptz): la setea `enviarPrecioVendedor` **solo en el primer envío** (`if (!t.precio_al_vendedor_at)`), así el "posterior" queda anclado al primer momento en que el cliente tuvo un precio.
+- Commit en `master` (deployado).
+
 ## Peritaje físico (Fase 6) — IMPLEMENTADO
 
 Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/turno aparte; acá NO). El peritaje es una **capa encima de una tasación que ya existe** (no hay peritaje sin tasación). Base: módulo de Fazzini de tasador-tga, **sin** rol/turno/agenda, **enriquecido** con secciones de la hoja papel de Agustín (equipamiento, neumáticos x rueda, documentación, N° motor/chasis, estado general, cláusula legal).
