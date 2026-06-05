@@ -1321,6 +1321,13 @@ const PROVINCIAS_AR = [
 ];
 
 let ccaData = [];
+
+// ─── Referencias internas de precio (CCA + FMG), replicadas de tasador-tga ───
+// El usado SIEMPRE se tasa en pesos. La cotización pesifica los valores USD (BYD).
+const DEFAULT_COTIZ = 1350;
+let _cotizUsd = DEFAULT_COTIZ;                 // editable por el admin en el detalle
+const MARCAS_USD = ['BYD'];                    // en CCA estas vienen en USD; el resto en pesos (×1000)
+const PICKUPS_KEYWORDS = ['AMAROK','HILUX','RANGER','SAVEIRO','S-10','S10','MONTANA','STRADA','TORO','FRONTIER','ALASKAN'];
 let precios0kmData = [];
 
 // ─── CSV PARSER ──────────────────────────────────────────────────
@@ -1532,6 +1539,119 @@ function getCCAVersiones(marca, modelo, anio) {
     set.add(r.version.trim());
   });
   return [...set].sort();
+}
+
+// ═════════════════════════════════════════════════════════════════
+// REFERENCIAS INTERNAS DE PRECIO (CCA + FMG) — replicado de tasador-tga
+// Solo el admin las ve. Todo se muestra en pesos.
+// ═════════════════════════════════════════════════════════════════
+function getCotizUSD() { return _cotizUsd || DEFAULT_COTIZ; }
+function setCotizUsd(v) {
+  const n = parseFloat(v);
+  _cotizUsd = (!n || isNaN(n) || n <= 0) ? DEFAULT_COTIZ : n;
+  if (typeof rerenderDetalle === 'function' && detalleActual) rerenderDetalle();
+}
+function esPesos(marca) { return !MARCAS_USD.includes(String(marca || '').toUpperCase()); }
+function esPickup(modelo) {
+  const m = String(modelo || '').toUpperCase();
+  return PICKUPS_KEYWORDS.some(k => m.includes(k));
+}
+
+// Valor CCA del usado (marca+modelo+versión+año). Devuelve {precio, moneda} en moneda nativa.
+function calcPrecioCCA(marca, modelo, version, anio) {
+  if (!marca || !modelo) return null;
+  const M = String(marca).trim().toUpperCase();
+  const mod = String(modelo).trim();
+  const ver = String(version || '').trim();
+  const row = ccaData.find(r =>
+    (r.marca || '').trim().toUpperCase() === M &&
+    (r.modelo || '').trim() === mod &&
+    (r.version || '').trim() === ver);
+  if (!row) return null;
+  const raw = String(row[String(anio)] || '').trim();
+  if (!raw || raw === '0') return null;
+  const val = parseFloat(raw.replace(/,/g, '.'));   // gviz usa punto decimal
+  if (!val || isNaN(val)) return null;
+  return esPesos(marca) ? { precio: val * 1000, moneda: 'ARS' } : { precio: val, moneda: 'USD' };
+}
+
+// Ajuste por kilómetros (mismo escalonado que TGA, año base 2026)
+function calcAjusteKm(km, anio, modelo) {
+  const antiguedad = Math.max(1, 2026 - Number(anio));
+  const kmPorAnio = esPickup(modelo) ? 20000 : 15000;
+  const kmEsperados = antiguedad * kmPorAnio;
+  const ratio = (Number(km) || 0) / kmEsperados;
+  if (ratio <= 0.15) return 12;
+  if (ratio <= 0.33) return 8;
+  if (ratio <= 0.50) return 5;
+  if (ratio <= 0.66) return 3;
+  if (ratio <= 0.90) return 1;
+  if (ratio <= 1.10) return 0;
+  if (ratio <= 1.33) return -3;
+  if (ratio <= 1.66) return -5;
+  if (ratio <= 2.00) return -8;
+  if (ratio <= 3.00) return -12;
+  return -18;
+}
+
+// Fórmula FMG sobre el 0km equivalente guardado: precio0km / 1,05 / 1,09^años → precio mercado (ARS)
+function calcFormulaFMG(t) {
+  const precio = Number(t.equiv_0km_precio);
+  if (!precio || !t.equiv_0km_marca || !t.equiv_0km_modelo) return null;
+  const precio0km = (t.equiv_0km_moneda === 'USD') ? precio * getCotizUSD() : precio;
+  const anios = Math.max(0, 2026 - Number(t.usado_anio));
+  return precio0km / 1.05 / Math.pow(1.09, anios);
+}
+
+// Junta todo en pesos: base CCA, ajuste km, toma CCA (−14%), mercado FMG y toma FMG (−12%)
+function calcReferenciasAdmin(t) {
+  const cca = calcPrecioCCA(t.usado_marca, t.usado_modelo, t.usado_version, Number(t.usado_anio));
+  const ajuste = calcAjusteKm(t.usado_km, t.usado_anio, t.usado_modelo);
+  let ccaBaseARS = null, ccaTomaARS = null;
+  if (cca) {
+    ccaBaseARS = (cca.moneda === 'USD') ? cca.precio * getCotizUSD() : cca.precio;
+    ccaTomaARS = ccaBaseARS * (1 + ajuste / 100) * 0.86;
+  }
+  const fmgMercadoARS = calcFormulaFMG(t);
+  const fmgTomaARS = (fmgMercadoARS != null) ? fmgMercadoARS * (1 + ajuste / 100) * 0.88 : null;
+  return { cca, ccaBaseARS, ajuste, ccaTomaARS, fmgMercadoARS, fmgTomaARS };
+}
+
+// Bloque que ve SOLO el admin en el detalle
+function renderReferenciaInternaHTML(t) {
+  const r = calcReferenciasAdmin(t);
+  const ccaHTML = r.ccaBaseARS != null ? `
+    <div class="detalle-field">
+      <div class="detalle-field-label">Valor CCA${r.cca.moneda === 'USD' ? ' (pesificado)' : ''}</div>
+      <div class="detalle-field-value">${formatARS(r.ccaBaseARS)}</div>
+    </div>
+    <div class="detalle-field">
+      <div class="detalle-field-label">Ajuste por km</div>
+      <div class="detalle-field-value">${r.ajuste >= 0 ? '+' : ''}${r.ajuste}%</div>
+    </div>
+    <div class="detalle-field">
+      <div class="detalle-field-label">🟦 Estimado toma CCA (−14%)</div>
+      <div class="detalle-field-value big" style="color:var(--accent);">${formatARS(r.ccaTomaARS)}</div>
+    </div>`
+    : `<div class="detalle-field full"><div class="detalle-field-value muted">Sin dato en CCA para ${t.usado_marca} ${t.usado_modelo} ${t.usado_version || ''} ${t.usado_anio}.</div></div>`;
+  const fmgHTML = r.fmgTomaARS != null ? `
+    <div class="detalle-field">
+      <div class="detalle-field-label">🟩 Estimado toma FMG (−12%)</div>
+      <div class="detalle-field-value big" style="color:var(--accent);">${formatARS(r.fmgTomaARS)}</div>
+    </div>`
+    : `<div class="detalle-field full"><div class="detalle-field-value muted">FMG necesita un 0km equivalente cargado.</div></div>`;
+  return `
+    <div class="detalle-section">
+      <div class="detalle-section-title">💲 Referencia interna de toma</div>
+      <div class="detalle-field-label">Cotización USD (para pesificar)</div>
+      <input type="number" value="${getCotizUSD()}" min="0" step="10" onchange="setCotizUsd(this.value)"
+        style="width:130px; padding:6px 10px; border:1px solid var(--grey-2); border-radius:8px; font-size:14px; margin:4px 0 12px;">
+      <div class="detalle-grid">
+        ${ccaHTML}
+        ${fmgHTML}
+      </div>
+      <div class="detalle-field-value muted" style="margin-top:8px; font-size:12px;">Referencia interna (mismas fórmulas que TGA, sin la manual de Kavak). El usado se tasa en pesos.</div>
+    </div>`;
 }
 
 // ─── SUPABASE STORAGE UPLOAD ─────────────────────────────────────
@@ -2502,6 +2622,8 @@ function renderDetalleHTML(t, modo) {
             <div class="detalle-comment">${t.equiv_0km_comentario}</div>
           ` : ''}
         </div>
+
+        ${isAdmin ? renderReferenciaInternaHTML(t) : ''}
 
         <div class="detalle-section">
           <div class="detalle-section-title">⚡ BYD que pretende el cliente</div>
