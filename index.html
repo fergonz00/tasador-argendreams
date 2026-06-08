@@ -530,6 +530,18 @@ input, select, textarea { font-family: var(--font); }
   cursor: pointer; font-size: 14px; color: var(--grey-4);
 }
 .desc-pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+.desc-custom {
+  display: flex; align-items: center; gap: 2px; flex: 0 0 auto;
+  border: 1.5px dashed var(--grey-2); border-radius: 8px; padding: 0 10px;
+  font-weight: 700; color: var(--grey-4); background: white;
+}
+.desc-custom:focus-within { border-color: var(--primary); border-style: solid; }
+.desc-input {
+  width: 46px; border: none; background: transparent; outline: none;
+  font-weight: 700; font-size: 14px; text-align: right; color: var(--primary);
+  padding: 9px 0; -moz-appearance: textfield;
+}
+.desc-input::-webkit-outer-spin-button, .desc-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .resumen-precio {
   background: var(--primary); color: white; border-radius: 10px;
@@ -2752,6 +2764,8 @@ async function abrirDetalle(t, modo) {
       vistaMejora: false,
       vistaConfirmarToma: false,
       vistaPeritaje: false,
+      vistaCierreDirecto: false,
+      cdDesc: Number(t.descuento_pct_admin) || 9,
       tomaSel: null
     };
     document.getElementById('detalleModal').innerHTML = renderDetalleHTML(t, modo);
@@ -2809,10 +2823,12 @@ function renderAccionesAdmin(t) {
   const peri = peritajeAdminBlockHTML(t);
   let acciones;
   switch (t.estado) {
-    case 'pendiente_admin':   acciones = accionesPendienteHTML(); break;
+    case 'pendiente_admin':   acciones = detalleActual.vistaCierreDirecto ? cierreDirectoHTML(t) : accionesPendienteHTML(); break;
     case 'rebotada':          acciones = infoSection('🔁 Rebotada — esperando que el vendedor corrija y reenvíe.', ultimoReboteHTML()); break;
     case 'en_reventa':
-    case 'precios_recibidos': acciones = detalleActual.vistaMejora ? formMejoraHTML(t) : (rankingHTML(t) + faltanHTML(t)); break;
+    case 'precios_recibidos': acciones = detalleActual.vistaCierreDirecto ? cierreDirectoHTML(t)
+                                       : detalleActual.vistaMejora ? formMejoraHTML(t)
+                                       : (rankingHTML(t) + faltanHTML(t)); break;
     case 'precio_al_vendedor':acciones = detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t) : precioEnviadoHTML(t, true); break;
     case 'cerrada':           acciones = cerradaHTML(t); break;
     default:                  acciones = '';
@@ -2899,6 +2915,9 @@ function accionesPendienteHTML() {
     <div class="detalle-actions">
       <button class="det-btn accent" onclick="mostrarFormRebote()">🔁 Rebotar al vendedor</button>
       <button class="det-btn primary" onclick="mostrarFormReventas()">🏷️ Enviar a reventas</button>
+    </div>
+    <div class="detalle-actions" style="margin-top:10px;">
+      <button class="det-btn outline" onclick="abrirCierreDirecto()">⚡ Cierre directo (1 reventa)</button>
     </div>
   </div>`;
 }
@@ -2999,8 +3018,6 @@ function rankingHTML(t) {
   const ganador = precios.find(p => p.id === detalleActual.ganadorId) || precios[0];
   const desc  = detalleActual.descuentoSel;
   const mejor = Number(ganador.precio);
-  const final = Math.round(mejor * (1 - desc / 100));
-  const gain  = mejor - final;
   const medals = ['🥇', '🥈', '🥉'];
 
   return `<div class="detalle-section">
@@ -3016,28 +3033,62 @@ function rankingHTML(t) {
         <span class="ranking-precio">${formatARS(p.precio)}</span>
       </label>`).join('')}
 
-    <div class="detalle-field-label" style="margin-top:16px;">Descuento que se aplica al ganador</div>
-    <div class="desc-selector">
-      ${[7, 9, 12].map(d => `<div class="desc-pill ${d === desc ? 'active' : ''}" onclick="cambiarDescuento(${d})">${d}%</div>`).join('')}
+    <div class="detalle-field-label" style="margin-top:16px;">Descuento que se aplica al ganador <span style="font-weight:400; color:var(--grey-4);">(podés escribir otro %)</span></div>
+    <div class="desc-selector" id="rkDescSel">
+      ${[7, 9, 12].map(d => `<div class="desc-pill ${Number(d) === Number(desc) ? 'active' : ''}" data-d="${d}" onclick="cambiarDescuento(${d})">${d}%</div>`).join('')}
+      <label class="desc-custom" title="% a medida — podés subirlo">
+        <input type="number" class="desc-input" min="0" max="60" step="0.5" value="${desc}"
+          oninput="_previewDescRanking(this.value)" onchange="cambiarDescuento(this.value)">%
+      </label>
     </div>
 
-    <div class="resumen-precio">
-      <div class="rp-row"><span>Mejor oferta de reventa</span><span>${formatARS(mejor)}</span></div>
-      <div class="rp-row"><span>Descuento ${desc}%</span><span class="rp-gain">− ${formatARS(gain)}</span></div>
-      <div class="rp-row" style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.2); padding-top:10px;">
-        <span>Precio de toma al cliente</span><span class="rp-big">${formatARS(final)}</span>
-      </div>
-      <div class="rp-row"><span class="rp-muted">Margen para ArgenDreams</span><span class="rp-gain">${formatARS(gain)} (${desc}%)</span></div>
-    </div>
+    <div class="resumen-precio" id="rkResumen">${_resumenRankingInner(mejor, desc)}</div>
 
     <div class="detalle-actions" style="margin-top:16px;">
       <button class="det-btn outline" onclick="abrirFormMejora()">📈 Pedir mejora a reventas</button>
       <button class="det-btn green" onclick="enviarPrecioVendedor()">✅ Enviar precio al vendedor</button>
     </div>
+    <div class="detalle-actions" style="margin-top:10px;">
+      <button class="det-btn outline" onclick="abrirCierreDirecto()">⚡ Cierre directo (1 reventa cerró por teléfono)</button>
+    </div>
   </div>`;
 }
 
-function cambiarDescuento(d) { detalleActual.descuentoSel = d; rerenderDetalle(); }
+// Contenido del recuadro azul de resumen del ranking (separado para refrescarlo en vivo al cambiar el %)
+function _resumenRankingInner(mejor, desc) {
+  const final = Math.round(mejor * (1 - desc / 100));
+  const gain  = mejor - final;
+  return `<div class="rp-row"><span>Mejor oferta de reventa</span><span>${formatARS(mejor)}</span></div>
+    <div class="rp-row"><span>Descuento ${desc}%</span><span class="rp-gain">− ${formatARS(gain)}</span></div>
+    <div class="rp-row" style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.2); padding-top:10px;">
+      <span>Precio de toma al cliente</span><span class="rp-big">${formatARS(final)}</span>
+    </div>
+    <div class="rp-row"><span class="rp-muted">Margen para ArgenDreams</span><span class="rp-gain">${formatARS(gain)} (${desc}%)</span></div>`;
+}
+
+// Clamp del % a un rango sano (0–60). Permite subirlo por encima de los presets.
+function _clampDesc(v) { const n = Number(v); return isFinite(n) ? Math.max(0, Math.min(60, n)) : null; }
+
+function cambiarDescuento(d) {
+  const n = _clampDesc(d);
+  if (n === null) return;
+  detalleActual.descuentoSel = n;
+  rerenderDetalle();
+}
+
+// Preview en vivo del ranking al tipear un % a medida (sin re-render para no perder el foco del input)
+function _previewDescRanking(v) {
+  const n = _clampDesc(v);
+  if (n === null) return;
+  detalleActual.descuentoSel = n;
+  const precios = detalleActual.reventasPrecios || [];
+  const ganador = precios.find(p => p.id === detalleActual.ganadorId) || precios[0];
+  if (!ganador) return;
+  const box = document.getElementById('rkResumen');
+  if (box) box.innerHTML = _resumenRankingInner(Number(ganador.precio), n);
+  document.querySelectorAll('#rkDescSel .desc-pill').forEach(el => el.classList.toggle('active', Number(el.dataset.d) === n));
+}
+
 function seleccionarGanador(id) { detalleActual.ganadorId = id; rerenderDetalle(); }
 
 // Panel "quiénes faltan cargar precio" + botón Recordar
@@ -3356,6 +3407,144 @@ async function confirmarTomaFinal() {
     await loadAdminTasaciones();
   } catch (e) { console.error(e); showToast('Error al confirmar la toma', 'error'); }
   finally { hideLoading(); }
+}
+
+// ── Cierre directo: una reventa ya pasó precio por teléfono y la operación se cerró ──
+// Protocolo: registrar la tasación en sistema con esa reventa, aplicar el % y dejarla en
+// "Con precio" (precio_al_vendedor) lista para marcar TOMADA en un clic cuando el cliente acepte.
+async function abrirCierreDirecto() {
+  // En pendiente_admin todavía no tenemos la lista de reventas activas: la traemos al vuelo.
+  if (!detalleActual.reventasActivas || !detalleActual.reventasActivas.length) {
+    showLoading('Cargando reventas...');
+    try {
+      detalleActual.reventasActivas = await sbGet('usuarios',
+        '?rol=eq.reventa&activo=eq.true&select=id,nombre,usuario&order=usuario.asc');
+    } catch (e) { console.error(e); showToast('No se pudieron cargar las reventas', 'error'); }
+    finally { hideLoading(); }
+  }
+  detalleActual.cdDesc = Number(detalleActual.t.descuento_pct_admin) || 9;
+  detalleActual.vistaCierreDirecto = true;
+  rerenderDetalle();
+}
+
+function cancelarCierreDirecto() { detalleActual.vistaCierreDirecto = false; rerenderDetalle(); }
+
+function cierreDirectoHTML(t) {
+  const reventas = detalleActual.reventasActivas || [];
+  const desc = detalleActual.cdDesc;
+  if (!reventas.length) {
+    return `<div class="detalle-section">
+      <div class="detalle-section-title">⚡ Cierre directo con una reventa</div>
+      <div class="detalle-field-value muted">No hay reventas activas para asignar. Cargá reventas en Configuración.</div>
+      <div class="detalle-actions" style="margin-top:12px;"><button class="det-btn ghost" onclick="cancelarCierreDirecto()">Volver</button></div>
+    </div>`;
+  }
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">⚡ Cierre directo con una reventa</div>
+    <p style="font-size:13px; color:var(--grey-4); margin-bottom:14px;">
+      Para cuando una reventa ya te pasó el precio por teléfono y la operación se cerró.
+      Registralo por protocolo: elegí la reventa, poné lo que paga y el %. Queda con el precio puesto,
+      listo para marcar <strong>TOMADA</strong> cuando el cliente acepte.
+    </p>
+    <label class="step-label">Reventa que cerró</label>
+    <select id="cdReventa" class="step-select">
+      ${reventas.map(r => `<option value="${r.id}">${escAttr(r.nombre || r.usuario)}</option>`).join('')}
+    </select>
+    <label class="step-label">Precio que paga la reventa (ARS)</label>
+    <input type="number" id="cdPrecio" class="step-input" placeholder="Ej: 18000000" oninput="_previewCierreDirecto()">
+    <label class="step-label">% de plataforma <span style="font-weight:400; color:var(--grey-4);">(podés escribir otro)</span></label>
+    <div class="desc-selector" id="cdDescSel">
+      ${[7, 9, 12].map(d => `<div class="desc-pill ${Number(d) === Number(desc) ? 'active' : ''}" data-d="${d}" onclick="_setCdDesc(${d})">${d}%</div>`).join('')}
+      <label class="desc-custom" title="% a medida — podés subirlo">
+        <input type="number" id="cdDescInput" class="desc-input" min="0" max="60" step="0.5" value="${desc}" oninput="_setCdDesc(this.value)">%
+      </label>
+    </div>
+    <label class="step-label" style="margin-top:4px;">Comentario (opcional)</label>
+    <textarea id="cdComentario" class="step-textarea" placeholder="Ej: Cerrado por teléfono con la reventa. Cliente confirma."></textarea>
+    <div class="resumen-precio" id="cdResumen" style="margin-top:6px;">${_resumenCierreInner(0, desc)}</div>
+    <div class="detalle-actions" style="margin-top:16px;">
+      <button class="det-btn ghost" onclick="cancelarCierreDirecto()">Cancelar</button>
+      <button class="det-btn green" onclick="confirmarCierreDirecto()">✅ Registrar y poner precio</button>
+    </div>
+  </div>`;
+}
+
+// Recuadro azul del resumen del cierre directo (refrescado en vivo, separado de los inputs)
+function _resumenCierreInner(precio, desc) {
+  if (!(precio > 0)) {
+    return `<div class="rp-row"><span class="rp-muted">Poné el precio de la reventa para ver la toma al cliente</span></div>`;
+  }
+  const final = Math.round(precio * (1 - desc / 100));
+  const gain  = precio - final;
+  return `<div class="rp-row"><span>Paga la reventa</span><span>${formatARS(precio)}</span></div>
+    <div class="rp-row"><span>Descuento ${desc}%</span><span class="rp-gain">− ${formatARS(gain)}</span></div>
+    <div class="rp-row" style="margin-top:8px; border-top:1px solid rgba(255,255,255,0.2); padding-top:10px;">
+      <span>Precio de toma al cliente</span><span class="rp-big">${formatARS(final)}</span>
+    </div>
+    <div class="rp-row"><span class="rp-muted">Margen para ArgenDreams</span><span class="rp-gain">${formatARS(gain)} (${desc}%)</span></div>`;
+}
+
+function _setCdDesc(d) {
+  const n = _clampDesc(d);
+  if (n === null) return;
+  detalleActual.cdDesc = n;
+  document.querySelectorAll('#cdDescSel .desc-pill').forEach(el => el.classList.toggle('active', Number(el.dataset.d) === n));
+  const inp = document.getElementById('cdDescInput');
+  if (inp && document.activeElement !== inp) inp.value = n;
+  _previewCierreDirecto();
+}
+
+function _previewCierreDirecto() {
+  const precio = Math.round(Number((document.getElementById('cdPrecio') || {}).value)) || 0;
+  const box = document.getElementById('cdResumen');
+  if (box) box.innerHTML = _resumenCierreInner(precio, detalleActual.cdDesc);
+}
+
+async function confirmarCierreDirecto() {
+  const t = detalleActual.t;
+  const reventaId = (document.getElementById('cdReventa') || {}).value;
+  const precio = Math.round(Number((document.getElementById('cdPrecio') || {}).value));
+  const desc = Number(detalleActual.cdDesc) || 0;
+  const comentario = (((document.getElementById('cdComentario') || {}).value) || '').trim();
+  if (!reventaId) { showToast('Elegí la reventa', 'error'); return; }
+  if (!(precio > 0)) { showToast('Poné el precio que paga la reventa', 'error'); return; }
+  const final = Math.round(precio * (1 - desc / 100));
+  if (!(final > 0)) { showToast('El precio final no es válido', 'error'); return; }
+  const reventa = (detalleActual.reventasActivas || []).find(r => r.id === reventaId);
+  const nom = reventa ? (reventa.nombre || reventa.usuario) : 'la reventa';
+  if (!confirm(`Cierre directo con ${nom}.\n\nPaga: ${formatARS(precio)}\nDescuento: ${desc}%\nToma al cliente: ${formatARS(final)}\nMargen: ${formatARS(precio - final)}\n\nQueda con el precio puesto, listo para marcar TOMADA. ¿Confirmás?`)) return;
+  showLoading('Registrando cierre directo...');
+  try {
+    const ronda = t.ronda_actual || 1;
+    // 1) registrar el precio de esa reventa en la ronda actual (upsert: por si ya había cargado)
+    const existentes = await sbGet('reventas_precios',
+      `?tasacion_id=eq.${t.id}&reventa_id=eq.${reventaId}&ronda=eq.${ronda}&select=id`);
+    if (existentes.length) {
+      await sbPatch('reventas_precios', `?id=eq.${existentes[0].id}`, { precio, comentario: comentario || null });
+    } else {
+      await sbPost('reventas_precios', { tasacion_id: t.id, reventa_id: reventaId, ronda, precio, comentario: comentario || null });
+    }
+    // 2) dejar el comentario como nota de reventa (protocolo) si hay
+    if (comentario) {
+      await sbPost('comentarios_reventa', { tasacion_id: t.id, admin_id: currentUser.id, comentario });
+    }
+    // 3) pasar a "Con precio" con esa reventa como referencia (la que fijó el precio al cliente)
+    const patch = {
+      estado: 'precio_al_vendedor',
+      descuento_pct_admin: desc,
+      precio_final_admin: final,
+      reventa_ganadora_id: reventaId
+    };
+    if (!t.enviada_a_reventas_at) patch.enviada_a_reventas_at = new Date().toISOString();
+    if (!t.precio_al_vendedor_at) patch.precio_al_vendedor_at = new Date().toISOString();
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, patch);
+    showToast('Cierre directo registrado — listo para marcar TOMADA', 'success');
+    notifyPrecioDeToma(t, final);
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error en el cierre directo: ' + (e.message || ''), 'error');
+  } finally { hideLoading(); }
 }
 
 function editarDesdeDetalle() {
