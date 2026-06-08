@@ -3443,8 +3443,9 @@ function cierreDirectoHTML(t) {
     <div class="detalle-section-title">⚡ Cierre directo con una reventa</div>
     <p style="font-size:13px; color:var(--grey-4); margin-bottom:14px;">
       Para cuando una reventa ya te pasó el precio por teléfono y la operación se cerró.
-      Registralo por protocolo: elegí la reventa, poné lo que paga y el %. Queda con el precio puesto,
-      listo para marcar <strong>TOMADA</strong> cuando el cliente acepte.
+      Registralo por protocolo: elegí la reventa, poné lo que paga y el %. El precio al cliente queda fijo,
+      listo para marcar <strong>TOMADA</strong>. Igual podés pedirle precio a todas las reventas por si alguna paga más
+      (a esa le asignás la toma al confirmar, sin cambiar el precio al cliente).
     </p>
     <label class="step-label">Reventa que cerró</label>
     <select id="cdReventa" class="step-select">
@@ -3461,6 +3462,10 @@ function cierreDirectoHTML(t) {
     </div>
     <label class="step-label" style="margin-top:4px;">Comentario (opcional)</label>
     <textarea id="cdComentario" class="step-textarea" placeholder="Ej: Cerrado por teléfono con la reventa. Cliente confirma."></textarea>
+    <label class="cd-pedir-todas" style="display:flex; align-items:flex-start; gap:10px; padding:12px; background:var(--grey-1); border:1.5px solid var(--grey-2); border-radius:10px; cursor:pointer; margin-bottom:6px;">
+      <input type="checkbox" id="cdPedirTodas" checked style="width:18px; height:18px; margin-top:1px; accent-color:var(--primary); flex:0 0 auto;">
+      <span style="font-size:13px; color:var(--grey-4);">📨 <strong>Pedir precio igual a todas las reventas</strong> (por si alguna paga más). Les llega el aviso para cotizar y aparece en su panel; el precio al cliente no cambia.</span>
+    </label>
     <div class="resumen-precio" id="cdResumen" style="margin-top:6px;">${_resumenCierreInner(0, desc)}</div>
     <div class="detalle-actions" style="margin-top:16px;">
       <button class="det-btn ghost" onclick="cancelarCierreDirecto()">Cancelar</button>
@@ -3510,9 +3515,11 @@ async function confirmarCierreDirecto() {
   if (!(precio > 0)) { showToast('Poné el precio que paga la reventa', 'error'); return; }
   const final = Math.round(precio * (1 - desc / 100));
   if (!(final > 0)) { showToast('El precio final no es válido', 'error'); return; }
+  const pedirTodas = !!(document.getElementById('cdPedirTodas') || {}).checked;
   const reventa = (detalleActual.reventasActivas || []).find(r => r.id === reventaId);
   const nom = reventa ? (reventa.nombre || reventa.usuario) : 'la reventa';
-  if (!confirm(`Cierre directo con ${nom}.\n\nPaga: ${formatARS(precio)}\nDescuento: ${desc}%\nToma al cliente: ${formatARS(final)}\nMargen: ${formatARS(precio - final)}\n\nQueda con el precio puesto, listo para marcar TOMADA. ¿Confirmás?`)) return;
+  const lineaTodas = pedirTodas ? '\n\nSe les pide precio igual a TODAS las reventas (por si alguna paga más).' : '';
+  if (!confirm(`Cierre directo con ${nom}.\n\nPaga: ${formatARS(precio)}\nDescuento: ${desc}%\nToma al cliente: ${formatARS(final)}\nMargen: ${formatARS(precio - final)}${lineaTodas}\n\nQueda con el precio puesto, listo para marcar TOMADA. ¿Confirmás?`)) return;
   showLoading('Registrando cierre directo...');
   try {
     const ronda = t.ronda_actual || 1;
@@ -3535,11 +3542,20 @@ async function confirmarCierreDirecto() {
       precio_final_admin: final,
       reventa_ganadora_id: reventaId
     };
-    if (!t.enviada_a_reventas_at) patch.enviada_a_reventas_at = new Date().toISOString();
     if (!t.precio_al_vendedor_at) patch.precio_al_vendedor_at = new Date().toISOString();
+    // Si se pide precio a todas: marcar la salida a reventas y re-armar el cron del resumen (+1h)
+    // para que las demás coticen. Igual quedan visibles en su panel (estado precio_al_vendedor),
+    // y sus precios entran como POSTERIOR; al confirmar la toma podés elegir a la que pague más.
+    if (pedirTodas) {
+      if (!t.enviada_a_reventas_at) patch.enviada_a_reventas_at = new Date().toISOString();
+      patch.resumen_reventas_enviado_at = null;
+    } else if (!t.enviada_a_reventas_at) {
+      patch.enviada_a_reventas_at = new Date().toISOString();
+    }
     await sbPatch('tasaciones', `?id=eq.${t.id}`, patch);
-    showToast('Cierre directo registrado — listo para marcar TOMADA', 'success');
+    showToast(pedirTodas ? 'Cierre directo registrado — se pidió precio a todas las reventas' : 'Cierre directo registrado — listo para marcar TOMADA', 'success');
     notifyPrecioDeToma(t, final);
+    if (pedirTodas) notifyNuevaUnidadReventa(t);
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) {
