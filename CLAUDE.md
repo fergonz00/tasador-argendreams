@@ -147,6 +147,13 @@ Mejora del estado `precio_al_vendedor` (solapa "Con precio") para el admin:
 - **Columna nueva** `tasaciones.precio_al_vendedor_at` (timestamptz): la setea `enviarPrecioVendedor` **solo en el primer envío** (`if (!t.precio_al_vendedor_at)`), así el "posterior" queda anclado al primer momento en que el cliente tuvo un precio.
 - Commit en `master` (deployado).
 
+## % de plataforma editable + Cierre directo (1 reventa) — IMPLEMENTADO
+
+Dos pedidos de Fer (commit en `master`, deployado):
+
+- **% de plataforma editable hacia arriba**: en el ranking (`rankingHTML`), además de los presets 7/9/12% ahora hay un **input numérico** para escribir cualquier % (clamp 0–60, sirve para subirlo por encima de 12). Preview en vivo del precio de toma sin re-render (helpers `_clampDesc`, `_resumenRankingInner`, `_previewDescRanking`; `cambiarDescuento` ahora clampa). `enviarPrecioVendedor` lee `detalleActual.descuentoSel`, que el preview mantiene actualizado.
+- **Cierre directo con una reventa** (`cierreDirectoHTML` + `confirmarCierreDirecto`): para cuando una reventa ya pasó el precio por teléfono y la operación se cerró. Botón **⚡ Cierre directo** disponible en `pendiente_admin` (saltea el broadcast a las 7-8 reventas) **y** en `en_reventa`/`precios_recibidos` (una cerró por teléfono mientras estaba en reventas). El admin elige **1 reventa** + **precio que paga (ARS)** + **% de plataforma** (mismo selector editable) → calcula el precio de toma al cliente. Al confirmar: upsert en `reventas_precios` (ronda actual), comentario opcional a `comentarios_reventa`, y `PATCH tasaciones` a `precio_al_vendedor` con `reventa_ganadora_id` = esa reventa + `precio_final_admin` + `precio_al_vendedor_at`. Queda en la solapa **"Con precio"** lista para marcar **TOMADA en un clic** (reusa `abrirConfirmarToma` → `confirmarTomaFinal`, que setea `reventa_final_id` y avisa a la reventa). Así toda tasación queda en sistema aunque se resuelva rápido. Estado del form en `detalleActual`: `vistaCierreDirecto`, `cdDesc` (helpers `abrirCierreDirecto`/`cancelarCierreDirecto`/`_setCdDesc`/`_previewCierreDirecto`/`_resumenCierreInner`).
+
 ## Peritaje físico (Fase 6) — IMPLEMENTADO
 
 Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/turno aparte; acá NO). El peritaje es una **capa encima de una tasación que ya existe** (no hay peritaje sin tasación). Base: módulo de Fazzini de tasador-tga, **sin** rol/turno/agenda, **enriquecido** con secciones de la hoja papel de Agustín (equipamiento, neumáticos x rueda, documentación, N° motor/chasis, estado general, cláusula legal).
