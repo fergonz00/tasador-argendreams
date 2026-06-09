@@ -1795,6 +1795,7 @@ function validarStep(step) {
       return { ok: true };
     case 6:
       if (!wizardData.usado_km || wizardData.usado_km <= 0) return { ok: false, msg: 'Ingresá los kilómetros' };
+      if (wizardData.usado_km > 300000) return { ok: false, msg: 'El kilometraje máximo permitido es 300.000 km' };
       return { ok: true };
     case 7:
       if (!(wizardData.usado_color || '').trim()) return { ok: false, msg: 'Ingresá el color' };
@@ -2087,7 +2088,7 @@ function renderStep7_Km() {
   return `
     <div class="wizard-step">
       ${_stepHeader(7, '📏 Kilómetros actuales')}
-      <input type="number" class="step-input number-big" min="0" step="1000"
+      <input type="number" class="step-input number-big" min="0" max="300000" step="1000"
         value="${wizardData.usado_km || ''}"
         oninput="wizardData.usado_km = parseInt(this.value) || null"
         placeholder="Ej. 45000" autofocus>
