@@ -1049,10 +1049,13 @@ async function notifyUsadoTomado(t, reventaFinalId, precioFinal) {
 }
 
 // ── Avisos al SUPERVISOR del vendedor (si el vendedor tiene uno asignado) ──
-// El supervisor se entera de 3 eventos de las tasaciones de SUS vendedores:
-// 1) sup_nueva_tasacion: el vendedor cargó una tasación
-// 2) sup_precio_de_toma: el admin le pasó el precio de toma al vendedor
-// 3) sup_usado_tomado: el admin confirmó la toma del usado (cierre tomada)
+// El supervisor se entera de 3 eventos de las tasaciones de SUS vendedores.
+// REUSA los templates ya aprobados en Meta (decisión Fer 2026-06-10, sin crear nuevos):
+// 1) nueva_tasacion: el vendedor cargó una tasación
+// 2) precio_de_toma: el admin le pasó el precio de toma al vendedor
+// 3) usado_tomado: el admin confirmó la toma (el texto habla "a tu precio" porque
+//    está redactado para la reventa — asumido a propósito para no crear template nuevo)
+// En notificaciones_log el `evento` va con prefijo sup_ para distinguirlos.
 async function _waSupervisorDe(vendedorId) {
   if (!vendedorId) return null;
   try {
@@ -1069,7 +1072,7 @@ async function notifySupervisorNuevaTasacion(t, vendedorNombre) {
   // Si la cargó el propio supervisor, no se auto-avisa
   if (currentUser && r.sup.id === currentUser.id) return;
   notifyWA({
-    template: 'sup_nueva_tasacion', to: r.sup.telefono_wa,
+    template: 'nueva_tasacion', to: r.sup.telefono_wa,
     params: [r.sup.nombre || r.sup.usuario, vendedorNombre || r.vendedor.nombre || 'Vendedor', _waVehiculo(t), t.usado_km ? String(t.usado_km) : '—'],
     evento: 'sup_nueva_tasacion', tasacion_id: t.id, destinatario_id: r.sup.id
   });
@@ -1080,7 +1083,7 @@ async function notifySupervisorPrecioDeToma(t, precio) {
   const vehiculo = _waVehiculo(t);
   const ref = `${r.vendedor.nombre || r.vendedor.usuario} — ${t.cliente_nombre ? `${t.cliente_nombre} (${vehiculo})` : vehiculo}`;
   notifyWA({
-    template: 'sup_precio_de_toma', to: r.sup.telefono_wa,
+    template: 'precio_de_toma', to: r.sup.telefono_wa,
     params: [r.sup.nombre || r.sup.usuario, ref, _waARS(precio)],
     evento: 'sup_precio_de_toma', tasacion_id: t.id, destinatario_id: r.sup.id
   });
@@ -1089,7 +1092,7 @@ async function notifySupervisorTomaCerrada(t) {
   const r = await _waSupervisorDe(t.vendedor_id);
   if (!r) return;
   notifyWA({
-    template: 'sup_usado_tomado', to: r.sup.telefono_wa,
+    template: 'usado_tomado', to: r.sup.telefono_wa,
     params: [r.sup.nombre || r.sup.usuario, _waVehiculo(t), _waARS(t.precio_final_admin)],
     evento: 'sup_usado_tomado', tasacion_id: t.id, destinatario_id: r.sup.id
   });

@@ -136,45 +136,20 @@ Hola {{1}}, se cargó el peritaje físico de {{2}}. El estado real del vehículo
 
 ---
 
-## 10. `sup_nueva_tasacion` → al SUPERVISOR del vendedor  ⏳ crear en Meta
-Cuando un vendedor con supervisor asignado (otra sucursal) carga una tasación
-(o el supervisor mismo la carga — en ese caso NO se auto-avisa).
-```
-Hola {{1}}, tu vendedor {{2}} cargó una tasación: {{3}} ({{4}} km). Podés seguirla desde tu panel de supervisor.
-```
-| Var | Contenido | Ejemplo |
-|---|---|---|
-| {{1}} | supervisor | Marcos |
-| {{2}} | vendedor | Juan Pérez |
-| {{3}} | vehículo | VW T-Cross 2021 |
-| {{4}} | kilómetros | 45.000 |
+## 10. Avisos al SUPERVISOR — REUSAN templates existentes (sin crear nada en Meta)
 
----
+Decisión de Fer (2026-06-10): el supervisor recibe los 3 avisos con los templates **ya
+aprobados**, para no crear ni esperar aprobación de templates nuevos. En
+`notificaciones_log` se distinguen porque el `evento` lleva prefijo `sup_`.
 
-## 11. `sup_precio_de_toma` → al SUPERVISOR del vendedor  ⏳ crear en Meta
-Cuando el admin le pasa el precio de toma al vendedor (incluye cierre directo).
-```
-Hola {{1}}, ya se le pasó el precio de toma a {{2}}: {{3}}. Lo podés ver en tu panel de supervisor.
-```
-| Var | Contenido | Ejemplo |
-|---|---|---|
-| {{1}} | supervisor | Marcos |
-| {{2}} | vendedor — cliente (vehículo) | Juan Pérez — María (VW T-Cross 2021) |
-| {{3}} | precio de toma | $ 15.800.000 |
+| Evento (app) | Template reusado | Params que se mandan | Caveat de redacción |
+|---|---|---|---|
+| `sup_nueva_tasacion` | `nueva_tasacion` (#1) | [supervisor, vendedor, vehículo, km] | "para revisar / avanzarla" está dirigido al admin — aceptable |
+| `sup_precio_de_toma` | `precio_de_toma` (#5) | [supervisor, "vendedor — cliente (vehículo)", precio] | "confirmá con el cliente" lo hace el vendedor, no él — aceptable |
+| `sup_usado_tomado` | `usado_tomado` (#8) | [supervisor, vehículo, **precio de toma al cliente**] | dice "se toma a tu precio / coordiná la recepción" (texto de reventa) — **asumido a propósito**; el monto que ve es la toma al cliente, NO lo que paga la reventa |
 
----
-
-## 12. `sup_usado_tomado` → al SUPERVISOR del vendedor  ⏳ crear en Meta
-Cuando el admin confirma la toma del usado (cierre `tomada`). El monto es el
-precio de toma al cliente — el supervisor NO ve lo que paga la reventa ni el margen.
-```
-Hola {{1}}, se confirmó la toma del usado {{2}} por {{3}}. Operación cerrada.
-```
-| Var | Contenido | Ejemplo |
-|---|---|---|
-| {{1}} | supervisor | Marcos |
-| {{2}} | vehículo | VW T-Cross 2021 |
-| {{3}} | precio de toma al cliente | $ 15.800.000 |
+Si algún día molesta la redacción, crear los templates `sup_*` propios y cambiar
+solo el campo `template` en `notifySupervisor*` de `index.html` (el `evento` ya queda igual).
 
 ---
 
@@ -191,9 +166,9 @@ Hola {{1}}, se confirmó la toma del usado {{2}} por {{3}}. Operación cerrada.
 | Admin envía precio al vendedor | `precio_de_toma` | vendedor de la tasación | inmediato |
 | Admin **confirma** que se toma el usado | `usado_tomado` | reventa final | inmediato |
 | Admin carga **peritaje físico** con precios ya cargados | `peritaje_agregado` | reventas activas | inmediato (bump de ronda) |
-| Vendedor (de un supervisor) carga tasación | `sup_nueva_tasacion` | supervisor del vendedor | inmediato (salvo que la cargue el supervisor) |
-| Admin envía precio al vendedor (incl. cierre directo) | `sup_precio_de_toma` | supervisor del vendedor | inmediato |
-| Admin confirma la toma | `sup_usado_tomado` | supervisor del vendedor | inmediato |
+| Vendedor (de un supervisor) carga tasación | `nueva_tasacion` (evento `sup_nueva_tasacion`) | supervisor del vendedor | inmediato (salvo que la cargue el supervisor) |
+| Admin envía precio al vendedor (incl. cierre directo) | `precio_de_toma` (evento `sup_precio_de_toma`) | supervisor del vendedor | inmediato |
+| Admin confirma la toma | `usado_tomado` (evento `sup_usado_tomado`) | supervisor del vendedor | inmediato |
 
 ---
 

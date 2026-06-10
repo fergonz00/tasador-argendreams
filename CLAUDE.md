@@ -26,7 +26,7 @@ App web de tasación de autos usados para **ArgenDreams**, concesionaria nueva q
 | `vendedor` | Cada vendedor de ArgenDreams (con usuario propio) | Crear tasaciones · ver "Mis tasaciones" · corregir las que rebota el admin · marcar TOMADO/NO TOMADO al final |
 | `admin` | Agustín (jefe de ventas) | Todo lo del vendedor + moderar tasaciones (rebotar o enviar a reventas) + ver precios de reventas en ranking + cerrar precio final · Único que ve CCA / Fórmula FMG / IA / diferencia $/% interna. **NO puede gestionar usuarios ni entrar como otros usuarios** |
 | `reventa` | 7-8 reventas externos (con usuario propio) | Ver lista de tasaciones a tasar · cargar precio de toma para cada una · NO ve CCA, FMG, IA ni datos internos |
-| `supervisor` | Supervisor de vendedores de **otra sucursal** (`usuarios.supervisor_id` de sus vendedores apunta a él) | **Solo mirar + cargar**: panel con las tasaciones de SUS vendedores (ve lo mismo que el vendedor, incl. monto del precio de toma; NO ve CCA/FMG/IA/precios de reventas/margen) + **cargar tasaciones en nombre de sus vendedores** (elige el vendedor en la barra del wizard; queda auditado en `tasaciones.cargada_por_id`). NO corrige rebotadas ni marca TOMADA — eso sigue siendo del vendedor/admin. Recibe 3 avisos WA: `sup_nueva_tasacion`, `sup_precio_de_toma`, `sup_usado_tomado` (⏳ templates a crear en Meta) |
+| `supervisor` | Supervisor de vendedores de **otra sucursal** (`usuarios.supervisor_id` de sus vendedores apunta a él) | **Solo mirar + cargar**: panel con las tasaciones de SUS vendedores (ve lo mismo que el vendedor, incl. monto del precio de toma; NO ve CCA/FMG/IA/precios de reventas/margen) + **cargar tasaciones en nombre de sus vendedores** (elige el vendedor en la barra del wizard; queda auditado en `tasaciones.cargada_por_id`). NO corrige rebotadas ni marca TOMADA — eso sigue siendo del vendedor/admin. Recibe 3 avisos WA reusando templates ya aprobados: `nueva_tasacion`, `precio_de_toma`, `usado_tomado` (eventos `sup_*` en el log; sin templates nuevos en Meta) |
 | `superadmin` (modo god) | **`fngonzalez` (Fer) hardcoded — único** | Todo lo del admin + alta/baja/edición de usuarios + reset de claves + **impersonation: entrar como cualquier otro usuario para ver lo que ve cada uno** |
 
 **Importante:** la lista `SUPERADMINS_USUARIOS` en `index.html` debe contener SOLO `fngonzalez`. Agustín NO es superadmin. **Nunca mencionar "Agustín" en el copy de la UI** — usar "admin" o "jefe de ventas".
@@ -419,8 +419,8 @@ Si hay errores recurrentes con código `132001` (template not found in language)
 | `notifyRecordatorioPrecio` | `recordatorio_precio` | 1 reventa puntual | botón "Recordar" del admin |
 | `notifyUsadoTomado` | `usado_tomado` | reventa_final | admin confirma toma |
 | `notifyPeritajeAgregado` | `peritaje_agregado` | todas las reventas activas | admin carga peritaje con precios ya cargados (bump de ronda) |
-| `notifySupervisorNuevaTasacion` | `sup_nueva_tasacion` ⏳ crear en Meta | supervisor del vendedor | vendedor (con supervisor) envía tasación; si la carga el supervisor no se auto-avisa |
-| `notifySupervisorPrecioDeToma` | `sup_precio_de_toma` ⏳ crear en Meta | supervisor del vendedor | admin envía precio al vendedor (incl. cierre directo) |
-| `notifySupervisorTomaCerrada` | `sup_usado_tomado` ⏳ crear en Meta | supervisor del vendedor | admin confirma la toma (cierre `tomada`) |
+| `notifySupervisorNuevaTasacion` | `nueva_tasacion` (reusado; evento log `sup_nueva_tasacion`) | supervisor del vendedor | vendedor (con supervisor) envía tasación; si la carga el supervisor no se auto-avisa |
+| `notifySupervisorPrecioDeToma` | `precio_de_toma` (reusado; evento log `sup_precio_de_toma`) | supervisor del vendedor | admin envía precio al vendedor (incl. cierre directo) |
+| `notifySupervisorTomaCerrada` | `usado_tomado` (reusado; evento log `sup_usado_tomado`; texto "a tu precio" asumido) | supervisor del vendedor | admin confirma la toma (cierre `tomada`) |
 | (cron `pg_cron`) | `resumen_reventas` | admin | +1h después de "enviar a reventas" |
 ```
