@@ -26,6 +26,7 @@ App web de tasación de autos usados para **ArgenDreams**, concesionaria nueva q
 | `vendedor` | Cada vendedor de ArgenDreams (con usuario propio) | Crear tasaciones · ver "Mis tasaciones" · corregir las que rebota el admin · marcar TOMADO/NO TOMADO al final |
 | `admin` | Agustín (jefe de ventas) | Todo lo del vendedor + moderar tasaciones (rebotar o enviar a reventas) + ver precios de reventas en ranking + cerrar precio final · Único que ve CCA / Fórmula FMG / IA / diferencia $/% interna. **NO puede gestionar usuarios ni entrar como otros usuarios** |
 | `reventa` | 7-8 reventas externos (con usuario propio) | Ver lista de tasaciones a tasar · cargar precio de toma para cada una · NO ve CCA, FMG, IA ni datos internos |
+| `supervisor` | Supervisor de vendedores de **otra sucursal** (`usuarios.supervisor_id` de sus vendedores apunta a él) | **Solo mirar + cargar**: panel con las tasaciones de SUS vendedores (ve lo mismo que el vendedor, incl. monto del precio de toma; NO ve CCA/FMG/IA/precios de reventas/margen) + **cargar tasaciones en nombre de sus vendedores** (elige el vendedor en la barra del wizard; queda auditado en `tasaciones.cargada_por_id`). NO corrige rebotadas ni marca TOMADA — eso sigue siendo del vendedor/admin. Recibe 3 avisos WA: `sup_nueva_tasacion`, `sup_precio_de_toma`, `sup_usado_tomado` (⏳ templates a crear en Meta) |
 | `superadmin` (modo god) | **`fngonzalez` (Fer) hardcoded — único** | Todo lo del admin + alta/baja/edición de usuarios + reset de claves + **impersonation: entrar como cualquier otro usuario para ver lo que ve cada uno** |
 
 **Importante:** la lista `SUPERADMINS_USUARIOS` en `index.html` debe contener SOLO `fngonzalez`. Agustín NO es superadmin. **Nunca mencionar "Agustín" en el copy de la UI** — usar "admin" o "jefe de ventas".
@@ -193,11 +194,13 @@ Agustín es **admin + perito a la vez** (en TGA el perito es Fazzini, un rol/tur
 8 tablas (sin prefijo, en proyecto propio). La 8va es `byd_modelos` (migration 003, ver sección de modelos BYD):
 
 ### `usuarios`
-- id, usuario, clave (texto plano — deuda técnica), nombre, rol (vendedor|admin|reventa)
+- id, usuario, clave (texto plano — deuda técnica), nombre, rol (vendedor|admin|reventa|supervisor)
+- **supervisor_id** (migration 012) — FK a usuarios: a qué supervisor reporta un vendedor (NULL = sin supervisor)
 - activo, debe_cambiar_clave, telefono_wa, notificaciones_wa, created_at
 
 ### `tasaciones`
 - id, vendedor_id (FK)
+- **cargada_por_id** (migration 012) — FK a usuarios: quién cargó realmente (NULL = el vendedor; se setea cuando el supervisor carga en nombre de un vendedor)
 - cliente_nombre
 - usado_marca, usado_modelo, usado_version, usado_anio, usado_km, usado_color, usado_provincia
 - equiv_0km_marca, equiv_0km_modelo, equiv_0km_version, equiv_0km_precio, equiv_0km_moneda (ARS|USD)
@@ -333,9 +336,10 @@ C:\proyectos\tasador-argendreams\
         ├── 006_reventa_final.sql ← corrida (cliente_acepto, reventa_final_id, reventa_final_precio)
         ├── 009_peritaje.sql ← corrida (analisis_fisico, peritaje_costos, peritaje_cargado_at)
         ├── 010_peritaje_fotos.sql ← corrida (peritaje_fotos text[])
-        └── 011_storage_fotos_policies.sql ← corrida (políticas de subida al bucket argendreams-fotos)
+        ├── 011_storage_fotos_policies.sql ← corrida (políticas de subida al bucket argendreams-fotos)
+        └── 012_supervisor.sql ← corrida 2026-06-10 (rol supervisor + usuarios.supervisor_id + tasaciones.cargada_por_id)
 
-**Migrations 001–006, 009, 010 y 011 corridas en Supabase.**
+**Migrations 001–006, 009, 010, 011 y 012 corridas en Supabase.**
 
 ## Estado de deploy / infra (2026-05-27)
 - **ONLINE** en `http://tasador.argendreams.online` (GitHub Pages, repo PÚBLICO `github.com/fergonz00/tasador-argendreams`, rama `master`, archivo `CNAME`).
@@ -415,5 +419,8 @@ Si hay errores recurrentes con código `132001` (template not found in language)
 | `notifyRecordatorioPrecio` | `recordatorio_precio` | 1 reventa puntual | botón "Recordar" del admin |
 | `notifyUsadoTomado` | `usado_tomado` | reventa_final | admin confirma toma |
 | `notifyPeritajeAgregado` | `peritaje_agregado` | todas las reventas activas | admin carga peritaje con precios ya cargados (bump de ronda) |
+| `notifySupervisorNuevaTasacion` | `sup_nueva_tasacion` ⏳ crear en Meta | supervisor del vendedor | vendedor (con supervisor) envía tasación; si la carga el supervisor no se auto-avisa |
+| `notifySupervisorPrecioDeToma` | `sup_precio_de_toma` ⏳ crear en Meta | supervisor del vendedor | admin envía precio al vendedor (incl. cierre directo) |
+| `notifySupervisorTomaCerrada` | `sup_usado_tomado` ⏳ crear en Meta | supervisor del vendedor | admin confirma la toma (cierre `tomada`) |
 | (cron `pg_cron`) | `resumen_reventas` | admin | +1h después de "enviar a reventas" |
 ```
