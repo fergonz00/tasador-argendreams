@@ -1856,7 +1856,7 @@ function validarStep(step) {
       if (!wizardData.usado_modelo) return { ok: false, msg: 'Elegí un modelo' };
       return { ok: true };
     case 4:
-      if (!wizardData.usado_version) return { ok: false, msg: 'Elegí una versión' };
+      if (!wizardData.usado_version) return { ok: false, msg: wizardData.usado_version_manual ? 'Escribí la versión a mano' : 'Elegí una versión' };
       return { ok: true };
     case 5:
       // 0km equivalente:
@@ -1969,6 +1969,7 @@ function seleccionarMarca(m) {
   // reset campos dependientes
   wizardData.usado_modelo = null;
   wizardData.usado_version = null;
+  wizardData.usado_version_manual = false;
 }
 
 function renderStep3_Anio() {
@@ -1990,6 +1991,7 @@ function seleccionarAnio(v) {
   // Si cambia el año, reseteo modelo y versión: las listas filtradas pueden ser distintas
   wizardData.usado_modelo = null;
   wizardData.usado_version = null;
+  wizardData.usado_version_manual = false;
 }
 
 function renderStep4_Modelo() {
@@ -2021,6 +2023,7 @@ function seleccionarModelo(m) {
   if (!m) { wizardData.usado_modelo = null; return; }
   wizardData.usado_modelo = m;
   wizardData.usado_version = null;
+  wizardData.usado_version_manual = false;
 }
 
 function renderStep5_Version() {
@@ -2029,28 +2032,66 @@ function renderStep5_Version() {
   }
   // Filtramos por año para mostrar solo versiones que existían en ese año
   const versiones = getCCAVersiones(wizardData.usado_marca, wizardData.usado_modelo, wizardData.usado_anio);
+  const esManual = wizardData.usado_version_manual === true;
+  const valManual = esManual ? (wizardData.usado_version || '') : '';
+
+  // Bloque de carga manual (input + aviso). Se muestra si el vendedor eligió "Otra".
+  const manualBox = `
+    <div id="versionManualBox" style="display:${esManual ? 'block' : 'none'}; margin-top:14px;">
+      <label class="step-label">Escribí la versión tal cual figura en el auto</label>
+      <input class="step-select" id="versionManualInput" value="${escAttr(valManual)}"
+             oninput="setVersionManual(this.value)"
+             placeholder="Ej: 5P 1,5 T HEV HIBRIDO">
+      <p class="step-help" style="color:var(--red); margin-top:8px">
+        ⚠️ Esta versión no está en la lista CCA. Va a quedar <strong>marcada para que el admin la revise</strong> y la confirme (o te la rebote si le falta algo).
+      </p>
+    </div>`;
+
+  // Caso A: CCA no tiene versiones para esta marca/modelo/año → directo a manual
   if (versiones.length === 0) {
     return `
       <div class="wizard-step">
         ${_stepHeader(5, '⚙️ Versión')}
         <p class="step-help" style="color:var(--red)"><strong>No tenemos versiones cargadas en CCA para ${wizardData.usado_marca} ${wizardData.usado_modelo} ${wizardData.usado_anio}.</strong></p>
-        <p class="step-help">Volvé atrás y verificá la marca/modelo/año, o consultá con el admin.</p>
+        <label class="step-label" style="margin-top:6px">Cargá la versión a mano</label>
+        <select class="step-select" onchange="seleccionarVersion(this.value)">
+          <option value="">— ¿Cómo querés cargarla? —</option>
+          <option value="__OTRA__" ${esManual ? 'selected' : ''}>✏️ Escribir la versión a mano</option>
+        </select>
+        ${manualBox}
       </div>
     `;
   }
+
+  // Caso B: hay versiones CCA → select normal + opción "Otra"
   return `
     <div class="wizard-step">
       ${_stepHeader(5, '⚙️ Versión de ' + wizardData.usado_modelo)}
       <label class="step-label">Elegí la versión</label>
       <select class="step-select" onchange="seleccionarVersion(this.value)">
         <option value="">— Elegí una versión —</option>
-        ${versiones.map(v => `<option value="${v}" ${wizardData.usado_version === v ? 'selected' : ''}>${v}</option>`).join('')}
+        ${versiones.map(v => `<option value="${v}" ${(!esManual && wizardData.usado_version === v) ? 'selected' : ''}>${v}</option>`).join('')}
+        <option value="__OTRA__" ${esManual ? 'selected' : ''}>✏️ No encuentro la versión / Otra</option>
       </select>
+      ${manualBox}
     </div>
   `;
 }
 function seleccionarVersion(v) {
+  if (v === '__OTRA__') {
+    // Pasa a modo manual: si venía de una versión del catálogo, limpio para que escriba
+    if (!wizardData.usado_version_manual) wizardData.usado_version = null;
+    wizardData.usado_version_manual = true;
+    renderWizard();   // re-render para mostrar el input (no se re-renderiza al tipear → no pierde foco)
+    return;
+  }
+  wizardData.usado_version_manual = false;
   wizardData.usado_version = v || null;
+}
+function setVersionManual(v) {
+  const t = (v || '').toUpperCase();
+  wizardData.usado_version = t.trim() ? t : null;
+  wizardData.usado_version_manual = true;
 }
 
 function renderStep6_Equiv0km() {
@@ -2356,6 +2397,7 @@ async function submitTasacion() {
       usado_marca: wizardData.usado_marca,
       usado_modelo: wizardData.usado_modelo,
       usado_version: wizardData.usado_version,
+      usado_version_manual: !!wizardData.usado_version_manual,
       usado_anio: wizardData.usado_anio,
       usado_km: wizardData.usado_km,
       usado_color: wizardData.usado_color,
@@ -2619,7 +2661,7 @@ function renderAdminTasaciones() {
     return `<div class="tas-card ${hint ? 'urgente' : ''}" onclick="verDetalleAdmin('${t.id}')">
       <div class="tas-card-row">
         <div>
-          <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km</div>
+          <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km${t.usado_version_manual ? ' <span style="display:inline-block; background:#fde68a; color:#92400e; font-size:10px; font-weight:700; padding:1px 6px; border-radius:6px; vertical-align:middle;">✏️ versión a mano</span>' : ''}</div>
           <div class="tas-card-sub">Cliente: ${t.cliente_nombre || '—'} · Vendedor: ${t.vendedor?.nombre || '—'} · ${formatFechaCorta(t.created_at)}</div>
           ${_bidsLine(t)}
           ${t.precio_final_admin ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Precio toma: ${formatARS(t.precio_final_admin)}</div>` : ''}
@@ -2702,7 +2744,7 @@ function renderDetalleHTML(t, modo) {
           </div>
           <div class="detalle-field">
             <div class="detalle-field-label">Versión</div>
-            <div class="detalle-field-value">${t.usado_version || '—'}</div>
+            <div class="detalle-field-value">${t.usado_version || '—'}${t.usado_version_manual ? ' <span style="display:inline-block; background:#fde68a; color:#92400e; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px; vertical-align:middle;">✏️ A MANO — revisar</span>' : ''}</div>
           </div>
           <div class="detalle-field">
             <div class="detalle-field-label">Año</div>
@@ -4898,6 +4940,7 @@ function cargarTasacionParaEdicion(t) {
     usado_marca: t.usado_marca,
     usado_modelo: t.usado_modelo,
     usado_version: t.usado_version,
+    usado_version_manual: !!t.usado_version_manual,
     usado_anio: t.usado_anio,
     usado_km: t.usado_km,
     usado_color: t.usado_color,
