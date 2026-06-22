@@ -65,7 +65,7 @@ CERRADA (resultado: tomada | no_tomada)
 | 2 | Marca usado | `<select>` desde CCA |
 | 3 | Año | `<select>` dinámico desde CCA (2012-2025) |
 | 4 | Modelo | `<select>` filtrado por marca + año (solo modelos vigentes ese año) |
-| 5 | Versión | `<select>` filtrado por marca+modelo+año. **SIN opción "Otra"** |
+| 5 | Versión | `<select>` filtrado por marca+modelo+año **+ opción "✏️ No encuentro la versión / Otra"** → input manual (`setVersionManual`, se guarda en MAYÚSCULAS). Setea `tasaciones.usado_version_manual=true` (migration 013). Si CCA no tiene versiones para esa combinación, va directo a carga manual. El admin la ve flageada (badge "✏️ versión a mano" en la lista, "✏️ A MANO — revisar" en el detalle) y da OK (enviar a reventas) o la rebota con el flujo existente (campo "Versión"). CCA no la encuentra → "Sin dato en CCA" (el admin usa FMG/reventas) |
 | 6 | 0km equivalente | Auto-detección con `detectarEquivVigente()`. Si hay match en scraping elcerokm + VW de TGA → muestra cartel verde con "Es correcto / No coincide". Si no hay match → mensaje + skip. Si "No coincide" → solo textarea de comentario obligatorio (no marca/modelo manual) |
 | 7 | Kilómetros | Input number |
 | 8 | Color + Provincia | Texto + `<select>` 24 provincias AR |
@@ -337,7 +337,8 @@ C:\proyectos\tasador-argendreams\
         ├── 009_peritaje.sql ← corrida (analisis_fisico, peritaje_costos, peritaje_cargado_at)
         ├── 010_peritaje_fotos.sql ← corrida (peritaje_fotos text[])
         ├── 011_storage_fotos_policies.sql ← corrida (políticas de subida al bucket argendreams-fotos)
-        └── 012_supervisor.sql ← corrida 2026-06-10 (rol supervisor + usuarios.supervisor_id + tasaciones.cargada_por_id)
+        ├── 012_supervisor.sql ← corrida 2026-06-10 (rol supervisor + usuarios.supervisor_id + tasaciones.cargada_por_id)
+        └── 013_version_manual.sql ← corrida 2026-06-22 (tasaciones.usado_version_manual — versión cargada a mano por el vendedor, revisa el admin)
 
 **Migrations 001–006, 009, 010, 011 y 012 corridas en Supabase.**
 
