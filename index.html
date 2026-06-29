@@ -194,6 +194,24 @@ input, select, textarea { font-family: var(--font); }
 .toast.error { background: var(--red); }
 .toast.success { background: var(--green); }
 
+/* ─── CONFIRMACIÓN (reemplaza al confirm() nativo, que algunos navegadores bloquean) ─── */
+.confirm-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,41,64,0.6);
+  display: none; align-items: center; justify-content: center;
+  z-index: 3500; padding: 20px;
+}
+.confirm-overlay.active { display: flex; }
+.confirm-box {
+  background: white; border-radius: 14px; padding: 24px;
+  max-width: 440px; width: 100%; box-shadow: var(--shadow-lg);
+}
+.confirm-text {
+  font-size: 15px; color: var(--primary); line-height: 1.5;
+  white-space: pre-line; margin-bottom: 20px;
+}
+.confirm-actions { display: flex; gap: 10px; }
+
 /* ─── TABS (vendedor: nueva / mis tasaciones) ─── */
 .tabs-nav {
   display: flex; gap: 0;
@@ -831,6 +849,17 @@ input, select, textarea { font-family: var(--font); }
 <!-- ═══════════════════════ TOAST ═══════════════════════ -->
 <div class="toast" id="toast"></div>
 
+<!-- ═══════════════════════ CONFIRMACIÓN (modal propio, no usa el confirm() nativo) ═══════════════════════ -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <div class="confirm-text" id="confirmText"></div>
+    <div class="confirm-actions">
+      <button class="det-btn ghost" id="confirmCancel">Cancelar</button>
+      <button class="det-btn green" id="confirmOk">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 
 <script>
 // ═════════════════════════════════════════════════════════════════
@@ -1112,6 +1141,30 @@ function showToast(msg, type = '') {
   t.className = 'toast show ' + type;
   if (_toastTimer) clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => { t.className = 'toast ' + type; }, 3500);
+}
+
+// Confirmación in-app (Promesa<boolean>). Reemplaza al confirm() nativo, que los
+// navegadores suprimen si el usuario tilda "no permitir más diálogos" — y entonces
+// todos los botones que dependían de él dejan de funcionar en silencio.
+function uiConfirm(message, { ok = 'Confirmar', cancel = 'Cancelar', danger = false } = {}) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('confirmOverlay');
+    document.getElementById('confirmText').textContent = message;
+    const okBtn = document.getElementById('confirmOk');
+    const cancelBtn = document.getElementById('confirmCancel');
+    okBtn.textContent = ok;
+    cancelBtn.textContent = cancel;
+    okBtn.className = 'det-btn ' + (danger ? 'red' : 'green');
+    overlay.classList.add('active');
+    function cleanup(val) {
+      overlay.classList.remove('active');
+      okBtn.onclick = cancelBtn.onclick = overlay.onclick = null;
+      resolve(val);
+    }
+    okBtn.onclick = () => cleanup(true);
+    cancelBtn.onclick = () => cleanup(false);
+    overlay.onclick = e => { if (e.target === overlay) cleanup(false); };
+  });
 }
 
 function showLoginError(msg) {
@@ -3011,7 +3064,7 @@ async function eliminarTasacion(id) {
   if (!_esSuperadmin()) { showToast('Solo el administrador total puede eliminar tasaciones', 'error'); return; }
   const t = (detalleActual && detalleActual.t && detalleActual.t.id === id) ? detalleActual.t : null;
   const ref = t ? `${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} (${t.cliente_nombre || 's/cliente'})` : `#${id.substring(0,8)}`;
-  if (!confirm(`¿Eliminar definitivamente la tasación ${ref}?\n\nSe borran sus precios de reventa, comentarios y notas. Esta acción NO se puede deshacer.`)) return;
+  if (!await uiConfirm(`¿Eliminar definitivamente la tasación ${ref}?\n\nSe borran sus precios de reventa, comentarios y notas. Esta acción NO se puede deshacer.`, { ok: 'Eliminar', danger: true })) return;
   showLoading('Eliminando tasación...');
   try {
     // notificaciones_log referencia tasaciones SIN cascade → limpiar primero para no bloquear el delete.
@@ -3348,7 +3401,7 @@ async function enviarPrecioVendedor() {
   const desc = detalleActual.descuentoSel;
   const final = Math.round(Number(ganador.precio) * (1 - desc / 100));
   if (!(final > 0)) { showToast('El precio final no es válido', 'error'); return; }
-  if (!confirm(`Vas a enviar al vendedor un precio de toma de ${formatARS(final)}.\n\nMejor oferta: ${formatARS(ganador.precio)}\nDescuento: ${desc}%\nMargen: ${formatARS(Number(ganador.precio) - final)}\n\n¿Confirmás?`)) return;
+  if (!await uiConfirm(`Vas a enviar al vendedor un precio de toma de ${formatARS(final)}.\n\nMejor oferta: ${formatARS(ganador.precio)}\nDescuento: ${desc}%\nMargen: ${formatARS(Number(ganador.precio) - final)}\n\n¿Confirmás?`, { ok: 'Enviar precio' })) return;
   showLoading('Enviando precio...');
   try {
     const patch = {
@@ -3442,7 +3495,7 @@ async function marcarClienteAcepto() {
 
 async function cerrarNoTomada() {
   const t = detalleActual.t;
-  if (!confirm('¿Marcar que no se concretó / el cliente no aceptó? La operación se cierra.')) return;
+  if (!await uiConfirm('¿Marcar que no se concretó / el cliente no aceptó? La operación se cierra.', { ok: 'Cerrar operación', danger: true })) return;
   showLoading('Cerrando...');
   try {
     await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'cerrada', resultado: 'no_tomada' });
@@ -3492,7 +3545,7 @@ function preciosReventaConPrecioHTML(t, precios) {
 // Volver a la etapa de precios para re-elegir reventa / cambiar el % (sin nueva ronda).
 async function volverAEtapaPrecios() {
   const t = detalleActual.t;
-  if (!confirm('Volvés a la etapa de precios para re-elegir la reventa o cambiar el descuento.\n\nLos precios cargados se conservan. El precio actual al cliente queda en pausa hasta que reenvíes.\n\n¿Seguir?')) return;
+  if (!await uiConfirm('Volvés a la etapa de precios para re-elegir la reventa o cambiar el descuento.\n\nLos precios cargados se conservan. El precio actual al cliente queda en pausa hasta que reenvíes.\n\n¿Seguir?', { ok: 'Volver a precios' })) return;
   showLoading('Volviendo a precios...');
   try {
     await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'precios_recibidos', cliente_acepto: false });
@@ -3570,7 +3623,7 @@ async function confirmarTomaFinal() {
   }
   const margen = Number(row.precio) - Number(t.precio_final_admin);
   const nom = row.reventa?.nombre || row.reventa?.usuario || 'Reventa';
-  if (!confirm(`Confirmás la toma del usado.\n\nReventa: ${nom}\nPaga: ${formatARS(row.precio)}\nToma al cliente: ${formatARS(t.precio_final_admin)}\nMargen: ${formatARS(margen)}\n\nSe le avisa a esa reventa que el auto se toma a su precio.`)) return;
+  if (!await uiConfirm(`Confirmás la toma del usado.\n\nReventa: ${nom}\nPaga: ${formatARS(row.precio)}\nToma al cliente: ${formatARS(t.precio_final_admin)}\nMargen: ${formatARS(margen)}\n\nSe le avisa a esa reventa que el auto se toma a su precio.`, { ok: 'Confirmar toma' })) return;
   showLoading('Confirmando toma...');
   try {
     await sbPatch('tasaciones', `?id=eq.${t.id}`, {
@@ -3697,7 +3750,7 @@ async function confirmarCierreDirecto() {
   const reventa = (detalleActual.reventasActivas || []).find(r => r.id === reventaId);
   const nom = reventa ? (reventa.nombre || reventa.usuario) : 'la reventa';
   const lineaTodas = pedirTodas ? '\n\nSe les pide precio igual a TODAS las reventas (por si alguna paga más).' : '';
-  if (!confirm(`Cierre directo con ${nom}.\n\nPaga: ${formatARS(precio)}\nDescuento: ${desc}%\nToma al cliente: ${formatARS(final)}\nMargen: ${formatARS(precio - final)}${lineaTodas}\n\nQueda con el precio puesto, listo para marcar TOMADA. ¿Confirmás?`)) return;
+  if (!await uiConfirm(`Cierre directo con ${nom}.\n\nPaga: ${formatARS(precio)}\nDescuento: ${desc}%\nToma al cliente: ${formatARS(final)}\nMargen: ${formatARS(precio - final)}${lineaTodas}\n\nQueda con el precio puesto, listo para marcar TOMADA. ¿Confirmás?`, { ok: 'Cerrar directo' })) return;
   showLoading('Registrando cierre directo...');
   try {
     const ronda = t.ronda_actual || 1;
@@ -4763,7 +4816,7 @@ async function guardarUsuarioModal(modo, id) {
 async function toggleActivoUsuario(id, nuevoEstado) {
   if (!_esSuperadmin()) return;
   const u = usuariosData.find(x => x.id === id); if (!u) return;
-  if (!confirm(`¿Seguro que querés ${nuevoEstado ? 'activar' : 'desactivar'} al usuario "${u.usuario}"?`)) return;
+  if (!await uiConfirm(`¿Seguro que querés ${nuevoEstado ? 'activar' : 'desactivar'} al usuario "${u.usuario}"?`, { ok: nuevoEstado ? 'Activar' : 'Desactivar' })) return;
   showLoading(nuevoEstado ? 'Activando...' : 'Desactivando...');
   try {
     await sbPatch('usuarios', `?id=eq.${id}`, { activo: nuevoEstado });
@@ -4777,7 +4830,7 @@ async function eliminarUsuario(id) {
   if (!_esSuperadmin()) return;
   const u = usuariosData.find(x => x.id === id); if (!u) return;
   if (SUPERADMINS_USUARIOS.includes(u.usuario)) { showToast('No se puede eliminar al administrador total', 'error'); return; }
-  if (!confirm(`¿ELIMINAR definitivamente a "${u.usuario}" (${u.nombre})?\n\nNo se puede deshacer. Si el usuario ya tiene actividad (tasaciones/precios), mejor usá "Desactivar".`)) return;
+  if (!await uiConfirm(`¿ELIMINAR definitivamente a "${u.usuario}" (${u.nombre})?\n\nNo se puede deshacer. Si el usuario ya tiene actividad (tasaciones/precios), mejor usá "Desactivar".`, { ok: 'Eliminar', danger: true })) return;
   showLoading('Eliminando...');
   try {
     await sbDelete('usuarios', `?id=eq.${id}`);
@@ -4921,7 +4974,7 @@ async function borrarModeloByd(id) {
     renderGestionByd();
     return;
   }
-  if (!confirm('¿Borrar este modelo/versión?\n\nLas tasaciones ya cargadas NO se afectan (guardan su precio). Si solo querés ocultarlo del wizard, mejor destildá "Activo" y Guardá.')) return;
+  if (!await uiConfirm('¿Borrar este modelo/versión?\n\nLas tasaciones ya cargadas NO se afectan (guardan su precio). Si solo querés ocultarlo del wizard, mejor destildá "Activo" y Guardá.', { ok: 'Borrar', danger: true })) return;
   showLoading('Borrando...');
   try {
     await sbDelete('byd_modelos', `?id=eq.${id}`);
