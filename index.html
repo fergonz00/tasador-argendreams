@@ -2954,6 +2954,7 @@ async function abrirDetalle(t, modo) {
       t, modo,
       comentariosAdmin: rel.comentariosAdmin,
       reventasPrecios: rel.reventasPrecios,
+      reventasDescartes: rel.reventasDescartes,
       comentariosReventa: rel.comentariosReventa,
       miPrecio: rel.miPrecio,
       reventasActivas: rel.reventasActivas,
@@ -2978,7 +2979,7 @@ async function abrirDetalle(t, modo) {
 }
 
 async function cargarRelacionados(t, modo) {
-  const out = { comentariosAdmin: [], reventasPrecios: [], comentariosReventa: [], miPrecio: null, reventasActivas: [] };
+  const out = { comentariosAdmin: [], reventasPrecios: [], reventasDescartes: [], comentariosReventa: [], miPrecio: null, reventasActivas: [] };
 
   // Supervisor: solo mirar. Trae el último rebote (para ver el motivo) y nada interno
   // (sin precios de reventas, sin lista de reventas).
@@ -2995,7 +2996,7 @@ async function cargarRelacionados(t, modo) {
     out.comentariosReventa = await sbGet('comentarios_reventa',
       `?tasacion_id=eq.${t.id}&order=created_at.desc&select=comentario,created_at`);
     const mp = await sbGet('reventas_precios',
-      `?tasacion_id=eq.${t.id}&reventa_id=eq.${currentUser.id}&ronda=eq.${t.ronda_actual}&select=precio,comentario`);
+      `?tasacion_id=eq.${t.id}&reventa_id=eq.${currentUser.id}&ronda=eq.${t.ronda_actual}&select=precio,comentario,no_interesado`);
     out.miPrecio = mp[0] || null;
     return out;
   }
@@ -3005,8 +3006,11 @@ async function cargarRelacionados(t, modo) {
       `?tasacion_id=eq.${t.id}&order=created_at.desc`);
   }
   if (['en_reventa', 'precios_recibidos', 'precio_al_vendedor', 'cerrada'].includes(t.estado)) {
-    out.reventasPrecios = await sbGet('reventas_precios',
+    const filas = await sbGet('reventas_precios',
       `?tasacion_id=eq.${t.id}&ronda=eq.${t.ronda_actual}&order=precio.desc&select=*,reventa:reventa_id(nombre,usuario)`);
+    // Las "no interesado" (sin precio) se separan para no ensuciar el ranking ni la matemática.
+    out.reventasPrecios  = filas.filter(p => !p.no_interesado);
+    out.reventasDescartes = filas.filter(p => p.no_interesado);
   }
   // Para "quiénes faltan": lista de reventas activas (mientras se puede seguir cargando precio)
   if (['en_reventa', 'precios_recibidos', 'precio_al_vendedor'].includes(t.estado)) {
@@ -3036,7 +3040,7 @@ function renderAccionesAdmin(t) {
     case 'en_reventa':
     case 'precios_recibidos': acciones = detalleActual.vistaCierreDirecto ? cierreDirectoHTML(t)
                                        : detalleActual.vistaMejora ? formMejoraHTML(t)
-                                       : (rankingHTML(t) + faltanHTML(t)); break;
+                                       : (rankingHTML(t) + descartesHTML(t) + faltanHTML(t)); break;
     case 'precio_al_vendedor':acciones = detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t) : precioEnviadoHTML(t, true); break;
     case 'cerrada':           acciones = cerradaHTML(t); break;
     default:                  acciones = '';
@@ -3320,14 +3324,35 @@ function _previewDescRanking(v) {
 
 function seleccionarGanador(id) { detalleActual.ganadorId = id; rerenderDetalle(); }
 
+// Panel "reventas que NO quieren tomar la unidad" (con su comentario)
+function descartesHTML(t) {
+  const descartes = detalleActual.reventasDescartes || [];
+  if (!descartes.length) return '';
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">🚫 No interesados (${descartes.length})</div>
+    ${descartes.map(p => `
+      <div class="ranking-row" style="cursor:default;">
+        <span class="ranking-info">
+          <span class="nom">${p.reventa?.nombre || p.reventa?.usuario || 'Reventa'}</span>
+          ${p.comentario ? `<span class="com">${p.comentario}</span>` : ''}
+        </span>
+        <span class="ranking-precio muted" style="font-size:13px; color:var(--grey-4);">No la toma</span>
+      </div>`).join('')}
+  </div>`;
+}
+
 // Panel "quiénes faltan cargar precio" + botón Recordar
 function faltanHTML(t) {
   const activas = detalleActual.reventasActivas || [];
   if (!activas.length) return '';
-  const pusieron = new Set((detalleActual.reventasPrecios || []).map(p => p.reventa_id));
+  // Ya respondieron = cargaron precio O marcaron "no interesado"
+  const pusieron = new Set([
+    ...(detalleActual.reventasPrecios || []).map(p => p.reventa_id),
+    ...(detalleActual.reventasDescartes || []).map(p => p.reventa_id)
+  ]);
   const faltan = activas.filter(r => !pusieron.has(r.id));
   if (!faltan.length) {
-    return `<div class="detalle-section"><div class="detalle-field-value muted">✅ Las ${activas.length} reventas activas ya cargaron precio.</div></div>`;
+    return `<div class="detalle-section"><div class="detalle-field-value muted">✅ Las ${activas.length} reventas activas ya respondieron (precio o "no interesado").</div></div>`;
   }
   return `<div class="detalle-section">
     <div class="detalle-section-title">⏳ Faltan cargar precio (${faltan.length} de ${activas.length})</div>
@@ -3449,6 +3474,7 @@ function precioEnviadoHTML(t, esAdmin) {
   const precios = (detalleActual.reventasPrecios || []).slice().sort((a, b) => Number(b.precio) - Number(a.precio));
   return resumen
     + preciosReventaConPrecioHTML(t, precios)
+    + descartesHTML(t)
     + faltanHTML(t)
     + `<div class="detalle-section">
         <p style="font-size:13px; color:var(--grey-4);">${aceptado ? 'El cliente aceptó. <strong>Confirmá con la reventa</strong> para cerrar y avisarle.' : 'Cuando el vendedor marque que el cliente aceptó, confirmá con la reventa. (Igual podés confirmar vos.)'}</p>
@@ -3942,7 +3968,7 @@ async function loadReventaTasaciones() {
       `?${orFiltro}&order=created_at.desc&select=${sel}`);
     // Mis precios (de cualquier ronda) para saber cuáles ya tasé
     const precios = await sbGet('reventas_precios',
-      `?reventa_id=eq.${currentUser.id}&select=tasacion_id,ronda,precio,comentario,mejora_solicitada`);
+      `?reventa_id=eq.${currentUser.id}&select=tasacion_id,ronda,precio,comentario,mejora_solicitada,no_interesado`);
     reventaMisPrecios = {};
     precios.forEach(p => { reventaMisPrecios[`${p.tasacion_id}_${p.ronda}`] = p; });
     renderReventaTasaciones();
@@ -3978,6 +4004,7 @@ function _badgeReventa(t) {
   if (t.estado === 'cerrada' && t.resultado === 'tomada' && _gane(t))
     return { txt: '🏆 Tomado a tu precio', bg: 'var(--green-light)', fg: 'var(--green)' };
   if (_reCotizaPorPeritaje(t)) return { txt: '🔧 Re-cotizá — peritaje', bg: 'var(--red-light)', fg: 'var(--accent)' };
+  if (mp && mp.no_interesado) return { txt: '🚫 No interesado', bg: 'var(--grey-1)', fg: 'var(--grey-4)' };
   if (_mejoraPedida(t)) return { txt: '📈 Mejorá tu precio', bg: 'var(--red-light)', fg: 'var(--accent)' };
   if (mp) return { txt: '✅ Tasado', bg: 'var(--green-light)', fg: 'var(--green)' };
   return { txt: '⏳ Por tasar', bg: 'var(--orange-light)', fg: 'var(--orange)' };
@@ -4006,7 +4033,9 @@ function renderReventaTasaciones() {
         <div>
           <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km</div>
           <div class="tas-card-sub">${t.usado_version || '—'} · ${t.usado_color || '—'} · ${t.usado_provincia || '—'}</div>
-          ${mp ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Tu precio: ${formatARS(mp.precio)}</div>` : ''}
+          ${mp ? (mp.no_interesado
+              ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--grey-4); font-weight:600;">🚫 No te interesa</div>`
+              : `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Tu precio: ${formatARS(mp.precio)}</div>`) : ''}
         </div>
         <span class="tas-card-estado" style="background:${b.bg}; color:${b.fg};">${b.txt}</span>
       </div>
@@ -4046,7 +4075,28 @@ function renderAccionesReventa(t) {
       <div class="detalle-field-value muted">Esta operación se cerró: el cliente no avanzó con la toma del usado.</div>
     </div>`;
   }
-  // Activa (en_reventa / precios_recibidos): cargar/actualizar precio
+  // Ya marcó "no interesado": mostrar ese estado + opción de cambiar de idea y cotizar
+  if (mp && mp.no_interesado) {
+    return `<div class="detalle-section" style="border:none;">
+      <div class="detalle-section-title">🚫 Marcaste que no te interesa</div>
+      <div class="detalle-comment" style="background:var(--red-light); border-color:var(--accent); color:var(--accent);">
+        Le avisaste al admin que <strong>no querés tomar esta unidad</strong>.
+        ${mp.comentario ? `<div style="margin-top:6px; color:var(--grey-4);">Tu comentario: “${mp.comentario}”</div>` : ''}
+      </div>
+      <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">¿Cambiaste de idea? Podés cargar un precio de toma.</p>
+      <div class="accion-form" style="margin-top:8px;">
+        <label class="detalle-field-label">Precio de toma (ARS)</label>
+        <input type="number" id="reventaPrecio" class="byd-in" min="0" step="10000" value="" placeholder="Ej. 15000000" style="margin-top:6px;">
+        <label class="detalle-field-label" style="margin-top:12px; display:block;">Comentario (opcional)</label>
+        <textarea id="reventaComentario" placeholder="Ej. Sujeto a revisión mecánica / faltan fotos del motor.">${mp.comentario || ''}</textarea>
+        <div class="detalle-actions" style="margin-top:14px;">
+          <button class="det-btn ghost" onclick="cerrarDetalle()">Cancelar</button>
+          <button class="det-btn green" onclick="guardarPrecioReventa('${t.id}')">💾 Cargar precio</button>
+        </div>
+      </div>
+    </div>`;
+  }
+  // Activa (en_reventa / precios_recibidos): cargar/actualizar precio  ·  o marcar "no interesado"
   return `<div class="detalle-section" style="border:none;">
     <div class="detalle-section-title">💰 Tu precio de toma</div>
     ${_reCotizaPorPeritaje(t) ? `<div class="detalle-comment" style="margin-bottom:10px; background:var(--red-light); border-color:var(--accent); color:var(--accent);">🔧 Se cargó el <strong>peritaje físico</strong> de esta unidad. Reveé tu precio según el estado real (mirá la sección "Peritaje físico" más arriba).</div>` : ''}
@@ -4060,6 +4110,10 @@ function renderAccionesReventa(t) {
       <div class="detalle-actions" style="margin-top:14px;">
         <button class="det-btn ghost" onclick="cerrarDetalle()">Cancelar</button>
         <button class="det-btn green" onclick="guardarPrecioReventa('${t.id}')">💾 ${mp ? 'Actualizar' : 'Cargar'} precio</button>
+      </div>
+      <div style="margin-top:16px; padding-top:14px; border-top:1px dashed var(--grey-2);">
+        <p style="font-size:13px; color:var(--grey-4); margin-bottom:8px;">¿No querés tomar esta unidad? Avisale al admin (podés dejar el motivo en el comentario de arriba).</p>
+        <button class="det-btn red" style="width:100%;" onclick="marcarNoInteresado('${t.id}')">🚫 No estoy interesado en la compra</button>
       </div>
     </div>
   </div>`;
@@ -4076,7 +4130,7 @@ async function guardarPrecioReventa(id) {
     if (detalleActual.miPrecio) {
       await sbPatch('reventas_precios',
         `?tasacion_id=eq.${id}&reventa_id=eq.${currentUser.id}&ronda=eq.${ronda}`,
-        { precio, comentario: comentario || null, mejora_solicitada: false });
+        { precio, comentario: comentario || null, mejora_solicitada: false, no_interesado: false });
     } else {
       await sbPost('reventas_precios',
         { tasacion_id: id, reventa_id: currentUser.id, ronda, precio, comentario: comentario || null });
@@ -4090,6 +4144,33 @@ async function guardarPrecioReventa(id) {
     await loadReventaTasaciones();
   } catch (e) {
     console.error(e); showToast('Error al guardar el precio', 'error');
+  } finally { hideLoading(); }
+}
+
+// La reventa avisa que NO quiere tomar esta unidad (con comentario opcional).
+// Se registra como fila de reventas_precios con precio null + no_interesado=true
+// (respeta el UNIQUE por tasacion/reventa/ronda). NO cambia el estado de la tasación
+// (no cuenta como "precio recibido"); el admin lo ve en el detalle.
+async function marcarNoInteresado(id) {
+  const comentario = (document.getElementById('reventaComentario')?.value || '').trim();
+  if (!await uiConfirm('Vas a avisarle al admin que NO te interesa comprar esta unidad.' + (comentario ? `\n\nComentario: ${comentario}` : '\n\n(Sin comentario — podés escribir un motivo en el campo de comentario antes de confirmar.)') + '\n\nPodés cambiar de idea después y cargar un precio.', { ok: 'No me interesa', danger: true })) return;
+  const t = detalleActual.t;
+  const ronda = t.ronda_actual;
+  showLoading('Guardando...');
+  try {
+    if (detalleActual.miPrecio) {
+      await sbPatch('reventas_precios',
+        `?tasacion_id=eq.${id}&reventa_id=eq.${currentUser.id}&ronda=eq.${ronda}`,
+        { precio: null, comentario: comentario || null, mejora_solicitada: false, no_interesado: true });
+    } else {
+      await sbPost('reventas_precios',
+        { tasacion_id: id, reventa_id: currentUser.id, ronda, precio: null, comentario: comentario || null, no_interesado: true });
+    }
+    showToast('Le avisamos al admin que no te interesa ✓', 'success');
+    cerrarDetalle();
+    await loadReventaTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al guardar', 'error');
   } finally { hideLoading(); }
 }
 
