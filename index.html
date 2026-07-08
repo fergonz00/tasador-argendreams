@@ -2602,9 +2602,13 @@ let adminFiltroEstado = 'pendiente_admin';
 let adminTotalReventas = 0;          // reventas activas (para "X de Y")
 let adminBidsPorTasacion = {};       // tasacion_id → Set de reventa_id que pusieron precio
 
+// ¿Tiene precio referencial cargado y todavía sin pasar por reventas? → solapa "Precio manual"
+function _esPrecioManual(t) { return t.estado === 'pendiente_admin' && t.precio_referencial != null; }
+
 // Solapas del admin con su explicación
 const ADMIN_FILTROS = [
   { key: 'pendiente_admin',    label: '⏳ Pendientes', sub: 'Tasaciones nuevas para revisar. Entrá a cada una para rebotarla (pedir correcciones) o enviarla a reventas.' },
+  { key: 'precio_manual',      label: '💡 Precio manual', sub: 'Les pusiste un precio referencial (orientativo, no final) sin pasar por reventas. Podés editarlo o enviarlas a reventas cuando quieras.' },
   { key: 'rebotada',           label: '🔁 Rebotadas',  sub: 'Rebotadas al vendedor. Esperando que corrija y reenvíe — no requieren acción tuya por ahora.' },
   { key: 'en_reventa',         label: '🏷️ En reventa', sub: 'Enviadas a las reventas, que están cargando sus precios. Podés entrar para pedir mejora a alguna.' },
   { key: 'precios_recibidos',  label: '📊 Precios',    sub: 'Ya hay precios de reventas. Entrá para ver el ranking, elegir y enviar el precio de toma al vendedor.' },
@@ -2615,14 +2619,20 @@ const ADMIN_FILTROS = [
 
 // Cuántas requieren ACCIÓN del admin en cada estado
 function _accionCount(key) {
-  if (key === 'pendiente_admin' || key === 'precios_recibidos')
+  // Pendientes "de verdad" = sin precio referencial (las que tienen viven en la solapa Precio manual)
+  if (key === 'pendiente_admin')
+    return adminTasacionesData.filter(t => t.estado === 'pendiente_admin' && t.precio_referencial == null).length;
+  if (key === 'precios_recibidos')
     return adminTasacionesData.filter(t => t.estado === key).length;
   if (key === 'precio_al_vendedor')
     return adminTasacionesData.filter(t => t.estado === 'precio_al_vendedor' && t.cliente_acepto).length;
-  return 0;
+  return 0; // 'precio_manual' no es urgente (no molesta con badge rojo)
 }
 function _estadoCount(key) {
-  return key === 'todas' ? adminTasacionesData.length : adminTasacionesData.filter(t => t.estado === key).length;
+  if (key === 'todas') return adminTasacionesData.length;
+  if (key === 'precio_manual') return adminTasacionesData.filter(_esPrecioManual).length;
+  if (key === 'pendiente_admin') return adminTasacionesData.filter(t => t.estado === 'pendiente_admin' && t.precio_referencial == null).length;
+  return adminTasacionesData.filter(t => t.estado === key).length;
 }
 
 async function loadAdminTasaciones() {
@@ -2673,6 +2683,9 @@ function renderAdminFiltros() {
 
 // Pill de estado en la card (en cerradas distingue tomada / no tomada)
 function _estadoPillCard(t) {
+  if (_esPrecioManual(t)) {
+    return `<span class="tas-card-estado" style="background:var(--orange-light); color:var(--orange);">💡 Precio manual</span>`;
+  }
   if (t.estado === 'cerrada') {
     const tomada = t.resultado === 'tomada';
     return `<span class="tas-card-estado" style="background:${tomada ? 'var(--green-light)' : 'var(--red-light)'}; color:${tomada ? 'var(--green)' : 'var(--red)'};">${tomada ? '✅ Tomada' : '❌ No tomada'}</span>`;
@@ -2690,6 +2703,7 @@ function _bidsLine(t) {
 
 // Pista de acción en cada card (solo cuando hay algo que hacer)
 function _adminCardHint(t) {
+  if (_esPrecioManual(t)) return null; // tiene precio referencial → no es urgente, vive en "Precio manual"
   if (t.estado === 'pendiente_admin')   return 'Revisá: rebotar o enviar a reventas';
   if (t.estado === 'precios_recibidos') return 'Revisá el ranking y enviá el precio';
   if (t.estado === 'precio_al_vendedor' && t.cliente_acepto) return 'Cliente aceptó: confirmá con la reventa';
@@ -2698,8 +2712,10 @@ function _adminCardHint(t) {
 
 function renderAdminTasaciones() {
   const list = document.getElementById('adminTasacionesList');
-  const filtradas = adminFiltroEstado === 'todas'
-    ? adminTasacionesData
+  const filtradas =
+      adminFiltroEstado === 'todas'          ? adminTasacionesData
+    : adminFiltroEstado === 'precio_manual'  ? adminTasacionesData.filter(_esPrecioManual)
+    : adminFiltroEstado === 'pendiente_admin'? adminTasacionesData.filter(t => t.estado === 'pendiente_admin' && t.precio_referencial == null)
     : adminTasacionesData.filter(t => t.estado === adminFiltroEstado);
 
   if (filtradas.length === 0) {
@@ -2719,6 +2735,7 @@ function renderAdminTasaciones() {
           <div class="tas-card-sub">Cliente: ${t.cliente_nombre || '—'} · Vendedor: ${t.vendedor?.nombre || '—'} · ${formatFechaCorta(t.created_at)}</div>
           ${_bidsLine(t)}
           ${t.precio_final_admin ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Precio toma: ${formatARS(t.precio_final_admin)}</div>` : ''}
+          ${(!t.precio_final_admin && t.precio_referencial != null) ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--orange); font-weight:600;">💡 Referencial: ${formatARS(t.precio_referencial)} (no final)</div>` : ''}
           ${hint ? `<div class="tas-card-hint">⚠️ ${hint}</div>` : ''}
         </div>
         ${_estadoPillCard(t)}

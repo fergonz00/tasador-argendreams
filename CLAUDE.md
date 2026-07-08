@@ -340,7 +340,7 @@ C:\proyectos\tasador-argendreams\
         ├── 012_supervisor.sql ← corrida 2026-06-10 (rol supervisor + usuarios.supervisor_id + tasaciones.cargada_por_id)
         ├── 013_version_manual.sql ← corrida 2026-06-22 (tasaciones.usado_version_manual — versión cargada a mano por el vendedor, revisa el admin)
         ├── 014_reventa_no_interesado.sql ← corrida 2026-07-08 (reventas_precios.no_interesado + precio nullable — la reventa puede marcar "no interesado en la compra" con comentario en vez de cargar precio)
-        └── 015_precio_referencial.sql ← corrida 2026-07-08 (tasaciones.precio_referencial + _comentario + _at — el admin pone un precio orientativo NO final para el vendedor sin pasar por reventas; sigue en pendiente_admin, puede enviarse a reventas después sin recarga del vendedor)
+        └── 015_precio_referencial.sql ← corrida 2026-07-08 (tasaciones.precio_referencial + _comentario + _at — el admin pone un precio orientativo NO final para el vendedor sin pasar por reventas; sigue en pendiente_admin PERO sale de la solapa "⏳ Pendientes" y va a una solapa propia "💡 Precio manual" (helper _esPrecioManual); puede enviarse a reventas después sin recarga del vendedor)
 
 **Migrations 001–006, 009, 010, 011 y 012 corridas en Supabase.**
 
