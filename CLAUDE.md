@@ -338,7 +338,8 @@ C:\proyectos\tasador-argendreams\
         ├── 010_peritaje_fotos.sql ← corrida (peritaje_fotos text[])
         ├── 011_storage_fotos_policies.sql ← corrida (políticas de subida al bucket argendreams-fotos)
         ├── 012_supervisor.sql ← corrida 2026-06-10 (rol supervisor + usuarios.supervisor_id + tasaciones.cargada_por_id)
-        └── 013_version_manual.sql ← corrida 2026-06-22 (tasaciones.usado_version_manual — versión cargada a mano por el vendedor, revisa el admin)
+        ├── 013_version_manual.sql ← corrida 2026-06-22 (tasaciones.usado_version_manual — versión cargada a mano por el vendedor, revisa el admin)
+        └── 014_reventa_no_interesado.sql ← corrida 2026-07-08 (reventas_precios.no_interesado + precio nullable — la reventa puede marcar "no interesado en la compra" con comentario en vez de cargar precio)
 
 **Migrations 001–006, 009, 010, 011 y 012 corridas en Supabase.**
 
