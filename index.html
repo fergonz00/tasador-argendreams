@@ -2562,6 +2562,7 @@ function renderMisTasaciones() {
           <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km</div>
           <div class="tas-card-sub">Cliente: ${t.cliente_nombre || '—'} · ${formatFechaCorta(t.created_at)}</div>
           ${t.precio_final_admin ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--green); font-weight:600;">Precio toma: ${formatARS(t.precio_final_admin)}</div>` : ''}
+          ${(!t.precio_final_admin && t.precio_referencial != null) ? `<div class="tas-card-sub" style="margin-top:4px; color:var(--orange); font-weight:600;">💡 Referencial: ${formatARS(t.precio_referencial)} (no final)</div>` : ''}
         </div>
         <span class="tas-card-estado estado-${t.estado}">${labelEstado(t.estado)}</span>
       </div>
@@ -2964,6 +2965,7 @@ async function abrirDetalle(t, modo) {
       vistaConfirmarToma: false,
       vistaPeritaje: false,
       vistaCierreDirecto: false,
+      vistaPrecioRef: false,
       cdDesc: Number(t.descuento_pct_admin) || 9,
       tomaSel: null
     };
@@ -3035,7 +3037,9 @@ function renderAccionesAdmin(t) {
   const peri = peritajeAdminBlockHTML(t);
   let acciones;
   switch (t.estado) {
-    case 'pendiente_admin':   acciones = detalleActual.vistaCierreDirecto ? cierreDirectoHTML(t) : accionesPendienteHTML(); break;
+    case 'pendiente_admin':   acciones = detalleActual.vistaCierreDirecto ? cierreDirectoHTML(t)
+                                       : detalleActual.vistaPrecioRef ? precioRefFormHTML(t)
+                                       : accionesPendienteHTML(t); break;
     case 'rebotada':          acciones = infoSection('🔁 Rebotada — esperando que el vendedor corrija y reenvíe.', ultimoReboteHTML()); break;
     case 'en_reventa':
     case 'precios_recibidos': acciones = detalleActual.vistaCierreDirecto ? cierreDirectoHTML(t)
@@ -3096,13 +3100,28 @@ function renderAccionesVendedor(t) {
           <button class="det-btn primary" onclick="editarDesdeDetalle()">✏️ Editar y reenviar</button>
         </div>
       </div>`;
-    case 'pendiente_admin':   return infoSection('⏳ Enviada. Esperando revisión del admin.');
+    case 'pendiente_admin':   return precioRefVendedorHTML(t) || infoSection('⏳ Enviada. Esperando revisión del admin.');
     case 'en_reventa':
-    case 'precios_recibidos': return infoSection('🏷️ En proceso de tasación con las reventas.');
+    case 'precios_recibidos': return (precioRefVendedorHTML(t) || '') + infoSection('🏷️ En proceso de tasación con las reventas.');
     case 'precio_al_vendedor':return precioEnviadoHTML(t, false);
     case 'cerrada':           return cerradaHTML(t);
     default:                  return '';
   }
+}
+
+// Precio referencial visible para el vendedor (y supervisor). Siempre aclara que NO es final.
+function precioRefVendedorHTML(t) {
+  if (!t || t.precio_referencial == null) return '';
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">💡 Precio referencial (orientativo)</div>
+    <div class="resumen-precio" style="background:linear-gradient(135deg, var(--orange), #c26a00);">
+      <div class="rp-row"><span>Precio referencial</span><span class="rp-big">${formatARS(t.precio_referencial)}</span></div>
+    </div>
+    <div class="detalle-comment" style="margin-top:10px; background:var(--orange-light); border-color:var(--orange); color:var(--grey-4);">
+      ⚠️ <strong>Es un precio REFERENCIAL, no final.</strong> El admin está afinando la tasación; el valor definitivo puede cambiar.
+      ${t.precio_referencial_comentario ? `<div style="margin-top:6px; color:var(--grey-4);">Nota del admin: “${t.precio_referencial_comentario}”</div>` : ''}
+    </div>
+  </div>`;
 }
 
 function infoSection(titulo, extra = '') {
@@ -3115,10 +3134,10 @@ function infoSection(titulo, extra = '') {
 function renderAccionesSupervisor(t) {
   const vendedor = t.vendedor?.nombre || 'el vendedor';
   switch (t.estado) {
-    case 'pendiente_admin':   return infoSection('⏳ Enviada. Esperando revisión del admin.');
+    case 'pendiente_admin':   return precioRefVendedorHTML(t) || infoSection('⏳ Enviada. Esperando revisión del admin.');
     case 'rebotada':          return infoSection(`🔁 El admin pidió correcciones — las corrige ${vendedor}.`, ultimoReboteHTML());
     case 'en_reventa':
-    case 'precios_recibidos': return infoSection('🏷️ En proceso de tasación con las reventas.');
+    case 'precios_recibidos': return (precioRefVendedorHTML(t) || '') + infoSection('🏷️ En proceso de tasación con las reventas.');
     case 'precio_al_vendedor':return `<div class="detalle-section">
         <div class="detalle-section-title">✅ Precio de toma enviado al vendedor</div>
         <div class="resumen-precio">
@@ -3142,17 +3161,102 @@ function ultimoReboteHTML() {
 }
 
 // ── 2B: Rebotar ──
-function accionesPendienteHTML() {
+function accionesPendienteHTML(t) {
   return `<div class="detalle-section" id="accionesArea">
+    ${precioRefBloqueHTML(t)}
     <div class="detalle-section-title">⚙️ Acciones</div>
     <div class="detalle-actions">
       <button class="det-btn accent" onclick="mostrarFormRebote()">🔁 Rebotar al vendedor</button>
       <button class="det-btn primary" onclick="mostrarFormReventas()">🏷️ Enviar a reventas</button>
     </div>
     <div class="detalle-actions" style="margin-top:10px;">
+      <button class="det-btn outline" onclick="abrirPrecioRef()">💡 ${t && t.precio_referencial != null ? 'Editar' : 'Poner'} precio referencial (sin reventas)</button>
+    </div>
+    <div class="detalle-actions" style="margin-top:10px;">
       <button class="det-btn outline" onclick="abrirCierreDirecto()">⚡ Cierre directo (1 reventa)</button>
     </div>
   </div>`;
+}
+
+// Bloque que muestra el precio referencial ya cargado (si hay) — visible arriba de las acciones del admin.
+function precioRefBloqueHTML(t) {
+  if (!t || t.precio_referencial == null) return '';
+  return `<div class="detalle-comment" style="margin-bottom:14px; background:var(--orange-light); border-color:var(--orange); color:var(--grey-4);">
+    💡 <strong>Precio referencial cargado: ${formatARS(t.precio_referencial)}</strong>
+    <span style="display:block; font-size:12px; color:var(--orange); font-weight:700; margin-top:2px;">REFERENCIAL — NO es el precio final</span>
+    ${t.precio_referencial_comentario ? `<div style="margin-top:6px; color:var(--grey-4);">Nota al vendedor: “${t.precio_referencial_comentario}”</div>` : ''}
+    <div class="detalle-actions" style="margin-top:10px;">
+      <button class="det-btn ghost" style="flex:0 0 auto; padding:6px 12px; font-size:13px;" onclick="quitarPrecioRef('${t.id}')">Quitar</button>
+    </div>
+  </div>`;
+}
+
+// ── Precio referencial (sin reventas) ──
+function abrirPrecioRef()   { detalleActual.vistaPrecioRef = true;  rerenderDetalle(); }
+function cancelarPrecioRef() { detalleActual.vistaPrecioRef = false; rerenderDetalle(); }
+
+function precioRefFormHTML(t) {
+  const ya = t.precio_referencial != null;
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">💡 Precio referencial (sin pasar por reventas)</div>
+    <p style="font-size:13px; color:var(--grey-4); margin-bottom:14px;">
+      Para adelantarle al vendedor un valor orientativo sin molestar a las reventas (ej: la foto se ve mal).
+      Se muestra <strong>marcado como REFERENCIAL, no final</strong>. Igual vas a poder
+      <strong>enviarla a reventas</strong> más tarde sin que el vendedor recargue nada.
+    </p>
+    <label class="step-label">Precio referencial (ARS)</label>
+    <input type="number" id="prPrecio" class="step-input" placeholder="Ej: 15000000" value="${ya ? t.precio_referencial : ''}">
+    <label class="step-label" style="margin-top:4px;">Comentario para el vendedor (opcional)</label>
+    <textarea id="prComentario" class="step-textarea" placeholder="Ej: Precio orientativo, la foto no se ve bien. Puede cambiar cuando lo confirme con las reventas.">${ya && t.precio_referencial_comentario ? t.precio_referencial_comentario : ''}</textarea>
+    <div class="detalle-actions" style="margin-top:16px;">
+      <button class="det-btn ghost" onclick="cancelarPrecioRef()">Cancelar</button>
+      <button class="det-btn green" onclick="guardarPrecioRef('${t.id}')">💾 ${ya ? 'Actualizar' : 'Enviar'} precio referencial</button>
+    </div>
+  </div>`;
+}
+
+async function guardarPrecioRef(id) {
+  const precio = Math.round(Number((document.getElementById('prPrecio') || {}).value));
+  const comentario = (((document.getElementById('prComentario') || {}).value) || '').trim();
+  if (!(precio > 0)) { showToast('Poné un precio referencial válido', 'error'); return; }
+  showLoading('Guardando precio referencial...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${id}`, {
+      precio_referencial: precio,
+      precio_referencial_comentario: comentario || null,
+      precio_referencial_at: new Date().toISOString()
+    });
+    // Reflejar en memoria para el re-render inmediato
+    if (detalleActual && detalleActual.t) {
+      detalleActual.t.precio_referencial = precio;
+      detalleActual.t.precio_referencial_comentario = comentario || null;
+    }
+    detalleActual.vistaPrecioRef = false;
+    showToast('Precio referencial enviado al vendedor ✓', 'success');
+    rerenderDetalle();
+    await loadAdminTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al guardar: ' + (e.message || ''), 'error');
+  } finally { hideLoading(); }
+}
+
+async function quitarPrecioRef(id) {
+  if (!await uiConfirm('¿Quitar el precio referencial? El vendedor deja de verlo.', { ok: 'Quitar', danger: true })) return;
+  showLoading('Quitando...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${id}`, {
+      precio_referencial: null, precio_referencial_comentario: null, precio_referencial_at: null
+    });
+    if (detalleActual && detalleActual.t) {
+      detalleActual.t.precio_referencial = null;
+      detalleActual.t.precio_referencial_comentario = null;
+    }
+    showToast('Precio referencial quitado', 'success');
+    rerenderDetalle();
+    await loadAdminTasaciones();
+  } catch (e) {
+    console.error(e); showToast('Error al quitar', 'error');
+  } finally { hideLoading(); }
 }
 
 function mostrarFormRebote() {
