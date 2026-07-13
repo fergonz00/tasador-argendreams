@@ -153,6 +153,25 @@ solo el campo `template` en `notifySupervisor*` de `index.html` (el `evento` ya 
 
 ---
 
+## 11. `mejor_precio_admin` → al ADMIN  ✅ creado en Meta (2026-07-13, PENDING → esperar aprobación)
+Cuando una reventa carga un precio que **supera el mejor ya avisado** para esa tasación
+(`tasaciones.max_precio_avisado_admin`, migration 016). La 1ra cotización siempre avisa;
+después, solo las mejoras. Así el admin (y Fer por BCC) se entera al toque de cada nuevo
+récord sin tener que entrar a mirar, y sin llenarse de mensajes por precios más bajos.
+```
+Hola {{1}}, {{2}} cotizó {{3}} para {{4}} — es la oferta más alta hasta ahora. Ingresá al tasador para verla.
+```
+| Var | Contenido | Ejemplo |
+|---|---|---|
+| {{1}} | admin | Agustín |
+| {{2}} | reventa | Carlos |
+| {{3}} | precio de toma | $ 21.500.000 |
+| {{4}} | vehículo | VW T-Cross 2021 |
+
+Template ID Meta: `1334222915500033`.
+
+---
+
 ## Eventos → template → destinatario
 
 | Evento (en la app) | Template | Destinatario | Disparo |
@@ -160,6 +179,7 @@ solo el campo `template` en `notifySupervisor*` de `index.html` (el `evento` ya 
 | Vendedor envía tasación | `nueva_tasacion` | admin(s) | inmediato |
 | Admin rebota | `tasacion_rebotada` | vendedor de la tasación | inmediato |
 | Admin envía a reventas | `nueva_unidad_reventa` | reventas activas | inmediato |
+| Reventa cotiza **más alto** que el mejor ya avisado | `mejor_precio_admin` | admin(s) | inmediato (PATCH atómico mig 016) |
 | 1 h después de enviar a reventas | `resumen_reventas` | admin(s) | **programado (+1 h)** |
 | Admin "pinchar a las que faltan" | `recordatorio_precio` | reventas sin precio | botón (admin) |
 | Admin pide mejora | `pedido_mejora` | reventas seleccionadas | botón (admin) |

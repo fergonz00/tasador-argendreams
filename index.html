@@ -998,6 +998,21 @@ async function notifyNuevaTasacion(t, vendedorNombre) {
     });
   }
 }
+async function notifyMejorPrecioAdmin(t, reventaNombre, precio) {
+  // Aviso al admin SOLO cuando este precio supera el mejor ya avisado
+  // (tasaciones.max_precio_avisado_admin). La 1ra cotización siempre avisa
+  // (supera a NULL); después, solo las mejoras. Ver migration 016.
+  const admins = await _waAdmins();
+  if (!admins.length) return;
+  const vehiculo = _waVehiculo(t);
+  for (const a of admins) {
+    notifyWA({
+      template: 'mejor_precio_admin', to: a.telefono_wa,
+      params: [a.nombre || a.usuario || 'Admin', reventaNombre || 'Una reventa', _waARS(precio), vehiculo],
+      evento: 'mejor_precio_admin', tasacion_id: t.id, destinatario_id: a.id
+    });
+  }
+}
 async function notifyTasacionRebotada(t, camposTexto) {
   const u = await _waUserById(t.vendedor_id);
   if (!_waTelOK(u)) return;
@@ -4260,6 +4275,18 @@ async function guardarPrecioReventa(id) {
     if (t.estado === 'en_reventa') {
       await sbPatch('tasaciones', `?id=eq.${id}`, { estado: 'precios_recibidos' });
     }
+    // Aviso al admin si este precio es el más alto hasta ahora (regla de Fer, mig 016).
+    // PATCH atómico y condicional: solo pisa max_precio_avisado_admin si estaba en NULL
+    // o era menor. Si devolvió fila, es un nuevo récord → avisamos. Así no se expone
+    // el mejor precio de la competencia en el objeto que maneja la reventa.
+    try {
+      const rec = await sbPatch('tasaciones',
+        `?id=eq.${id}&or=(max_precio_avisado_admin.is.null,max_precio_avisado_admin.lt.${precio})`,
+        { max_precio_avisado_admin: precio });
+      if (Array.isArray(rec) && rec.length) {
+        notifyMejorPrecioAdmin(t, currentUser.nombre || currentUser.usuario, precio);
+      }
+    } catch (e) { console.error('aviso mejor precio admin:', e); }
     showToast('Precio cargado ✓', 'success');
     cerrarDetalle();
     await loadReventaTasaciones();

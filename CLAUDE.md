@@ -340,6 +340,7 @@ C:\proyectos\tasador-argendreams\
         ├── 012_supervisor.sql ← corrida 2026-06-10 (rol supervisor + usuarios.supervisor_id + tasaciones.cargada_por_id)
         ├── 013_version_manual.sql ← corrida 2026-06-22 (tasaciones.usado_version_manual — versión cargada a mano por el vendedor, revisa el admin)
         ├── 014_reventa_no_interesado.sql ← corrida 2026-07-08 (reventas_precios.no_interesado + precio nullable — la reventa puede marcar "no interesado en la compra" con comentario en vez de cargar precio)
+        ├── 016_mejor_precio_avisado.sql ← corrida 2026-07-13 (tasaciones.max_precio_avisado_admin — high-water-mark del mejor precio de reventa ya avisado al admin; el aviso mejor_precio_admin sale solo cuando un precio nuevo lo supera)
         └── 015_precio_referencial.sql ← corrida 2026-07-08 (tasaciones.precio_referencial + _comentario + _at — el admin pone un precio orientativo NO final para el vendedor sin pasar por reventas; sigue en pendiente_admin PERO sale de la solapa "⏳ Pendientes" y va a una solapa propia "💡 Precio manual" (helper _esPrecioManual); puede enviarse a reventas después sin recarga del vendedor)
 
 **Migrations 001–006, 009, 010, 011 y 012 corridas en Supabase.**
@@ -415,6 +416,7 @@ Si hay errores recurrentes con código `132001` (template not found in language)
 | Evento (index.html) | Template (Meta) | Destinatario | Trigger |
 |---|---|---|---|
 | `notifyNuevaTasacion` | `nueva_tasacion` | todos los admin activos con WA | vendedor envía tasación |
+| `notifyMejorPrecioAdmin` | `mejor_precio_admin` | todos los admin activos con WA (+ Fer por BCC) | una reventa cotiza MÁS ALTO que el mejor precio ya avisado para esa tasación (mig 016, PATCH atómico sobre `tasaciones.max_precio_avisado_admin`) |
 | `notifyTasacionRebotada` | `tasacion_rebotada` | vendedor | admin rebota |
 | `notifyNuevaUnidadReventa` | `nueva_unidad_reventa` | todas las reventas activas con WA | admin envía a reventas |
 | `notifyPedidoMejora` | `pedido_mejora` | reventas seleccionadas | admin pide mejora |
