@@ -153,7 +153,7 @@ solo el campo `template` en `notifySupervisor*` de `index.html` (el `evento` ya 
 
 ---
 
-## 11. `mejor_precio_admin` → al ADMIN  ✅ creado en Meta (2026-07-13, PENDING → esperar aprobación)
+## 11. `mejor_precio_admin` → al ADMIN  ✅ APROBADO en Meta (2026-07-13). Ojo: Meta lo reclasificó como MARKETING (se mandó como UTILITY). Funciona igual; costo un poco mayor y sujeto a topes de frecuencia si algún día se escala a muchos destinatarios. Con admins internos (Agustín + Fer BCC) no es problema.
 Cuando una reventa carga un precio que **supera el mejor ya avisado** para esa tasación
 (`tasaciones.max_precio_avisado_admin`, migration 016). La 1ra cotización siempre avisa;
 después, solo las mejoras. Así el admin (y Fer por BCC) se entera al toque de cada nuevo
