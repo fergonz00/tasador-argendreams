@@ -3078,7 +3078,9 @@ function renderAccionesAdmin(t) {
     case 'precios_recibidos': acciones = detalleActual.vistaCierreDirecto ? cierreDirectoHTML(t)
                                        : detalleActual.vistaMejora ? formMejoraHTML(t)
                                        : (rankingHTML(t) + descartesHTML(t) + faltanHTML(t)); break;
-    case 'precio_al_vendedor':acciones = detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t) : precioEnviadoHTML(t, true); break;
+    case 'precio_al_vendedor':acciones = detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t)
+                                       : detalleActual.vistaMejorOferta ? mejorOfertaHTML(t)
+                                       : precioEnviadoHTML(t, true); break;
     case 'cerrada':           acciones = cerradaHTML(t); break;
     default:                  acciones = '';
   }
@@ -3609,8 +3611,15 @@ function precioEnviadoHTML(t, esAdmin) {
 
   // ADMIN: todos los precios de reventa (referencia + posteriores) + quiénes faltan + acciones
   const precios = (detalleActual.reventasPrecios || []).slice().sort((a, b) => Number(b.precio) - Number(a.precio));
+  const masAltas = _ofertasMasAltas(t);
+  const ctaMasAltas = masAltas.length ? `<div class="detalle-section" style="border:1.5px solid var(--orange); border-radius:10px; background:var(--orange-light);">
+        <div class="detalle-section-title" style="color:var(--orange);">⬆️ Hay ${masAltas.length} oferta${masAltas.length > 1 ? 's' : ''} más alta${masAltas.length > 1 ? 's' : ''} que la que le pasaste al vendedor</div>
+        <p style="font-size:13px; color:var(--grey-4); margin-bottom:12px;">Una reventa cotizó por encima de la referencia (${formatARS(_precioReferencia(t))}), aunque haya sido días después. Podés agarrar esa oferta.</p>
+        <div class="detalle-actions"><button class="det-btn primary" onclick="abrirMejorOferta()">⬆️ Elegir una oferta más alta</button></div>
+      </div>` : '';
   return resumen
     + preciosReventaConPrecioHTML(t, precios)
+    + ctaMasAltas
     + descartesHTML(t)
     + faltanHTML(t)
     + `<div class="detalle-section">
@@ -3639,6 +3648,11 @@ function cerradaHTML(t) {
     ${tomada && esAdmin && t.reventa_final_precio ? `
       <div class="detalle-field-label" style="margin-top:8px;">Reventa final · ${t.reventa_final?.nombre || t.reventa_final?.usuario || '—'}</div>
       <div class="detalle-field-value">Paga ${formatARS(t.reventa_final_precio)} · margen <strong style="color:var(--green);">${formatARS(Number(t.reventa_final_precio) - Number(t.precio_final_admin))}</strong></div>` : ''}
+    ${!tomada && esAdmin ? `
+      <p style="font-size:13px; color:var(--grey-4); margin-top:14px;">¿Apareció una oferta mejor o revivió la operación? Reabrila para volver a recibir/seleccionar precios.</p>
+      <div class="detalle-actions" style="margin-top:8px;">
+        <button class="det-btn outline" onclick="reabrirTasacion('${t.id}')">↩️ Reabrir para recibir precios</button>
+      </div>` : ''}
   </div>`;
 }
 
@@ -3800,6 +3814,124 @@ async function confirmarTomaFinal() {
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) { console.error(e); showToast('Error al confirmar la toma', 'error'); }
+  finally { hideLoading(); }
+}
+
+// ── Ofertas más altas que llegan tarde (mig: sin vencimiento por tiempo) ──
+// Ofertas de reventa que superan la referencia actual (la que fijó el precio al vendedor).
+// Sirve para que el admin pueda agarrar una cotización mejor aunque haya entrado días después.
+function _ofertasMasAltas(t) {
+  const ref = _precioReferencia(t);
+  return (detalleActual.reventasPrecios || [])
+    .filter(p => p.precio != null && Number(p.precio) > ref)
+    .sort((a, b) => Number(b.precio) - Number(a.precio));
+}
+
+function abrirMejorOferta() {
+  const altas = _ofertasMasAltas(detalleActual.t);
+  if (!altas.length) { showToast('No hay ofertas más altas que la referencia', 'error'); return; }
+  detalleActual.mejorSel = altas[0].id;   // default: la más alta
+  detalleActual.vistaMejorOferta = true;
+  rerenderDetalle();
+}
+function cancelarMejorOferta() { detalleActual.vistaMejorOferta = false; rerenderDetalle(); }
+function seleccionarMejor(id) { detalleActual.mejorSel = id; rerenderDetalle(); }
+
+function mejorOfertaHTML(t) {
+  const altas = _ofertasMasAltas(t);
+  if (!altas.length) { detalleActual.vistaMejorOferta = false; return precioEnviadoHTML(t, true); }
+  const desc = Number(t.descuento_pct_admin) || 9;
+  const sel = detalleActual.mejorSel;
+  const tomaActual = Number(t.precio_final_admin);
+  const row = altas.find(p => p.id === sel) || altas[0];
+  const nuevaToma = Math.round(Number(row.precio) * (1 - desc / 100));
+  const nom = row.reventa?.nombre || row.reventa?.usuario || 'la reventa';
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">⬆️ Elegir una oferta más alta</div>
+    <p style="font-size:13px; color:var(--grey-4); margin-bottom:10px;">
+      Estas reventas cotizaron <strong>más</strong> que la que le pasaste al vendedor (${formatARS(tomaActual)}). Elegí una y decidí qué hacer.
+    </p>
+    ${altas.map(p => {
+      const precio = Number(p.precio);
+      const nombre = p.reventa?.nombre || p.reventa?.usuario || 'Reventa';
+      const post = _esPosterior(p, t);
+      const toma = Math.round(precio * (1 - desc / 100));
+      return `<label class="ranking-row ${p.id === sel ? 'ganador' : ''}" onclick="seleccionarMejor('${p.id}')">
+        <input type="radio" name="mejor" ${p.id === sel ? 'checked' : ''}>
+        <span class="ranking-info">
+          <span class="nom">${nombre} ${post ? _badgePost() : ''}</span>
+          <span class="com">Paga ${formatARS(precio)} · toma al cliente ${formatARS(toma)} · margen ${formatARS(precio - toma)}</span>
+        </span>
+        <span class="ranking-precio">${formatARS(precio)}</span>
+      </label>`;
+    }).join('')}
+    <div style="margin-top:14px; padding:12px; background:var(--grey-1); border-radius:10px; font-size:13px; color:var(--grey-4);">
+      Con la oferta de <strong>${nom}</strong> (${formatARS(row.precio)}):
+      <div style="margin-top:6px;"><strong>A)</strong> subís la toma al cliente a <strong style="color:var(--green);">${formatARS(nuevaToma)}</strong> (hoy: ${formatARS(tomaActual)}) y le reenviás al vendedor.</div>
+      <div style="margin-top:4px;"><strong>B)</strong> dejás la toma en ${formatARS(tomaActual)} y cerrás asignándole el usado a esta reventa (margen ${formatARS(Number(row.precio) - tomaActual)}).</div>
+    </div>
+    <div class="detalle-actions" style="margin-top:14px; flex-wrap:wrap;">
+      <button class="det-btn ghost" onclick="cancelarMejorOferta()">Cancelar</button>
+      <button class="det-btn green" onclick="subirTomaConOferta()">⬆️ A) Subir la toma y reenviar</button>
+      <button class="det-btn primary" onclick="cerrarConOfertaMayor()">💰 B) Cerrar con más margen</button>
+    </div>
+  </div>`;
+}
+
+// A) Subir la toma al cliente usando la oferta elegida y reenviar al vendedor (queda abierta).
+async function subirTomaConOferta() {
+  const t = detalleActual.t;
+  const row = (detalleActual.reventasPrecios || []).find(p => p.id === detalleActual.mejorSel);
+  if (!row) { showToast('Elegí una oferta', 'error'); return; }
+  const desc = Number(t.descuento_pct_admin) || 9;
+  const nuevaToma = Math.round(Number(row.precio) * (1 - desc / 100));
+  const nom = row.reventa?.nombre || row.reventa?.usuario || 'la reventa';
+  if (!await uiConfirm(`Vas a subir la toma al cliente a ${formatARS(nuevaToma)} (antes ${formatARS(t.precio_final_admin)}) usando la oferta de ${nom} (${formatARS(row.precio)}).\n\nSe le reenvía el precio nuevo al vendedor.\n\n¿Confirmás?`, { ok: 'Subir y reenviar' })) return;
+  showLoading('Actualizando toma...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, {
+      precio_final_admin: nuevaToma,
+      reventa_ganadora_id: row.reventa_id,   // nueva referencia
+      cliente_acepto: false                  // cambió el precio: el cliente vuelve a decidir
+    });
+    showToast('Toma actualizada y reenviada al vendedor ✓', 'success');
+    notifyPrecioDeToma(t, nuevaToma);
+    notifySupervisorPrecioDeToma(t, nuevaToma);
+    detalleActual.vistaMejorOferta = false;
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) { console.error(e); showToast('Error al actualizar la toma', 'error'); }
+  finally { hideLoading(); }
+}
+
+// B) Precio al cliente igual, asignar el usado a la oferta más alta (más margen).
+// Reusa el flujo de confirmar toma preseleccionando la oferta elegida.
+function cerrarConOfertaMayor() {
+  if (!detalleActual.mejorSel) { showToast('Elegí una oferta', 'error'); return; }
+  detalleActual.tomaSel = detalleActual.mejorSel;
+  detalleActual.vistaMejorOferta = false;
+  detalleActual.vistaConfirmarToma = true;
+  rerenderDetalle();
+}
+
+// ── Reabrir una tasación cerrada "no tomada" (no debe morir por tiempo) ──
+// Regla de Fer: solo queda bloqueada cuando es TOMADA (ya asignada a una reventa).
+// Una "no tomada" vuelve a recibir/seleccionar precios: la mandamos a la etapa que corresponda.
+async function reabrirTasacion(id) {
+  const t = detalleActual.t;
+  if (!t || t.id !== id) return;
+  if (t.resultado === 'tomada') { showToast('Una toma cerrada no se reabre desde acá', 'error'); return; }
+  if (!await uiConfirm('Vas a reabrir esta tasación para que vuelva a recibir/seleccionar precios de reventa.\n\n(No se avisa por WhatsApp; si querés que coticen, avisales aparte.)\n\n¿Reabrir?', { ok: 'Reabrir' })) return;
+  // A dónde vuelve: si ya tenía precios de reventa → etapa de precios; si había ido a reventas → en reventa; si no → pendiente.
+  const tuvoPrecios = (detalleActual.reventasPrecios || []).some(p => p.precio != null);
+  const estado = tuvoPrecios ? 'precios_recibidos' : (t.enviada_a_reventas_at ? 'en_reventa' : 'pendiente_admin');
+  showLoading('Reabriendo...');
+  try {
+    await sbPatch('tasaciones', `?id=eq.${id}`, { estado, resultado: null, cliente_acepto: false });
+    showToast('Tasación reabierta ✓', 'success');
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) { console.error(e); showToast('Error al reabrir', 'error'); }
   finally { hideLoading(); }
 }
 
