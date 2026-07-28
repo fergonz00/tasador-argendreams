@@ -434,6 +434,39 @@ input, select, textarea { font-family: var(--font); }
   font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center;
 }
 .admin-buscar-clear:hover { background: var(--grey-3); }
+/* Cerrar operación (form de cierre del admin) */
+.cierre-opts { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.cierre-opt {
+  flex: 1 1 150px; padding: 14px 12px; border-radius: 10px; cursor: pointer;
+  border: 2px solid var(--grey-2); background: white;
+  font-size: 14px; font-weight: 600; color: var(--grey-4);
+}
+.cierre-opt.sel { border-color: var(--green); background: var(--green-light); color: var(--green); }
+.cierre-opt.sel.red { border-color: var(--red); background: var(--red-light); color: var(--red); }
+.cierre-check {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--grey-1); border: 1px solid var(--grey-2); border-radius: 10px;
+  padding: 12px 14px; font-size: 13.5px; cursor: pointer; line-height: 1.4;
+}
+.cierre-check input { margin-top: 2px; width: 17px; height: 17px; flex: none; }
+
+/* Cierre en masa desde la lista del admin */
+.masa-bar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  background: var(--primary); color: white; border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 10px; font-size: 13px;
+}
+.masa-bar .masa-cta { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.masa-btn {
+  border: none; border-radius: 8px; padding: 8px 12px; cursor: pointer;
+  font-size: 12.5px; font-weight: 700;
+}
+.masa-btn.go { background: var(--red); color: white; }
+.masa-btn.go[disabled] { opacity: .45; cursor: not-allowed; }
+.masa-btn.ghost { background: rgba(255,255,255,0.18); color: white; }
+.tas-card.sel-masa { outline: 2px solid var(--accent); background: var(--red-light); }
+.tas-card-check { margin-right: 10px; width: 18px; height: 18px; flex: none; }
+
 .busq-aviso {
   background: var(--grey-1); border: 1px solid var(--grey-2); border-radius: 10px;
   padding: 9px 13px; margin-bottom: 10px; font-size: 12.5px; color: var(--grey-4);
@@ -783,6 +816,9 @@ input, select, textarea { font-family: var(--font); }
              placeholder="Buscar por marca, modelo, cliente o vendedor…"
              oninput="onAdminBuscar(this.value)">
       <button type="button" id="adminBuscarClear" class="admin-buscar-clear" onclick="limpiarAdminBusqueda()" style="display:none;">✕</button>
+    </div>
+    <div style="margin-bottom:12px;">
+      <button type="button" class="det-btn outline" style="font-size:12.5px; padding:7px 12px;" onclick="toggleModoMasa()" id="btnModoMasa">🧹 Cerrar varias de una</button>
     </div>
     <div class="filtros-bar" id="adminFiltros"></div>
     <div id="adminFiltroSub" class="filtro-sub"></div>
@@ -2700,6 +2736,45 @@ function limpiarAdminBusqueda() {
   if (inp) inp.focus();
 }
 
+// ── Cierre en masa (limpiar el backlog de operaciones que quedaron colgadas) ──
+// Solo cierra como "no se concretó": si se tomó, cada una necesita su reventa y su precio.
+let adminModoMasa = false;
+const adminSelMasa = new Set();
+
+function toggleModoMasa() {
+  adminModoMasa = !adminModoMasa;
+  adminSelMasa.clear();
+  const b = document.getElementById('btnModoMasa');
+  if (b) b.textContent = adminModoMasa ? '✕ Salir del modo cierre' : '🧹 Cerrar varias de una';
+  renderAdminTasaciones();
+}
+function toggleSelMasa(id) {
+  if (adminSelMasa.has(id)) adminSelMasa.delete(id); else adminSelMasa.add(id);
+  renderAdminTasaciones();
+}
+function selMasaTodas(ids) {
+  const todas = ids.every(id => adminSelMasa.has(id));
+  if (todas) ids.forEach(id => adminSelMasa.delete(id));
+  else ids.forEach(id => adminSelMasa.add(id));
+  renderAdminTasaciones();
+}
+async function cerrarMasaNoTomada() {
+  const ids = Array.from(adminSelMasa);
+  if (!ids.length) return;
+  if (!await uiConfirm(`Vas a cerrar ${ids.length} ${ids.length === 1 ? 'tasación' : 'tasaciones'} como NO CONCRETADAS (el cliente no avanzó).\n\nNo se le avisa a nadie. Si alguna sí se tomó, cerrala de a una para registrar la reventa y el margen.\n\n¿Cerrar las ${ids.length}?`, { ok: `Cerrar ${ids.length}`, danger: true })) return;
+  showLoading('Cerrando operaciones...');
+  try {
+    await sbPatch('tasaciones', `?id=in.(${ids.join(',')})`, { estado: 'cerrada', resultado: 'no_tomada' });
+    showToast(`${ids.length} ${ids.length === 1 ? 'operación cerrada' : 'operaciones cerradas'} ✓`, 'success');
+    adminSelMasa.clear();
+    adminModoMasa = false;
+    const b = document.getElementById('btnModoMasa');
+    if (b) b.textContent = '🧹 Cerrar varias de una';
+    await loadAdminTasaciones();
+  } catch (e) { console.error(e); showToast('Error al cerrar las operaciones', 'error'); }
+  finally { hideLoading(); }
+}
+
 // Cuántas requieren ACCIÓN del admin en cada estado
 function _accionCount(key) {
   // Pendientes "de verdad" = sin precio referencial (las que tienen viven en la solapa Precio manual)
@@ -2818,11 +2893,29 @@ function renderAdminTasaciones() {
     return;
   }
 
-  list.innerHTML = avisoBusq + filtradas.map(t => {
+  // Barra del modo "cerrar varias de una" (solo cierra como no concretadas).
+  // Las ya cerradas no se pueden seleccionar (no hay nada que cerrar).
+  const idsVisibles = filtradas.filter(t => t.estado !== 'cerrada').map(t => t.id);
+  const todasSel = idsVisibles.length > 0 && idsVisibles.every(id => adminSelMasa.has(id));
+  const barraMasa = adminModoMasa ? `<div class="masa-bar">
+      <span>🧹 Tocá las tasaciones que <strong>no se concretaron</strong> · <strong>${adminSelMasa.size}</strong> ${adminSelMasa.size === 1 ? 'seleccionada' : 'seleccionadas'}</span>
+      <span class="masa-cta">
+        <button class="masa-btn ghost" onclick='selMasaTodas(${JSON.stringify(idsVisibles)})'>${todasSel ? 'Desmarcar todas' : `Marcar las ${idsVisibles.length} de la lista`}</button>
+        <button class="masa-btn go" ${adminSelMasa.size ? '' : 'disabled'} onclick="cerrarMasaNoTomada()">❌ Cerrar ${adminSelMasa.size || ''} como no concretadas</button>
+      </span>
+    </div>` : '';
+
+  list.innerHTML = avisoBusq + barraMasa + filtradas.map(t => {
     const hint = _adminCardHint(t);
-    return `<div class="tas-card ${hint ? 'urgente' : ''}" onclick="verDetalleAdmin('${t.id}')">
+    const sel = adminSelMasa.has(t.id);
+    const cerrable = t.estado !== 'cerrada';
+    const masa = adminModoMasa && cerrable;
+    const click = adminModoMasa ? (cerrable ? `toggleSelMasa('${t.id}')` : '') : `verDetalleAdmin('${t.id}')`;
+    return `<div class="tas-card ${hint && !adminModoMasa ? 'urgente' : ''} ${sel ? 'sel-masa' : ''}"
+      style="${adminModoMasa && !cerrable ? 'opacity:.45; cursor:default;' : ''}" onclick="${click}">
       <div class="tas-card-row">
-        <div>
+        ${masa ? `<input type="checkbox" class="tas-card-check" ${sel ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelMasa('${t.id}')">` : ''}
+        <div style="flex:1;">
           <div class="tas-card-title">${t.usado_marca} ${t.usado_modelo} ${t.usado_anio} · ${(t.usado_km || 0).toLocaleString('es-AR')} km${t.usado_version_manual ? ' <span style="display:inline-block; background:#fde68a; color:#92400e; font-size:10px; font-weight:700; padding:1px 6px; border-radius:6px; vertical-align:middle;">✏️ versión a mano</span>' : ''}</div>
           <div class="tas-card-sub">Cliente: ${t.cliente_nombre || '—'} · Vendedor: ${t.vendedor?.nombre || '—'} · ${formatFechaCorta(t.created_at)}</div>
           ${_bidsLine(t)}
@@ -3156,6 +3249,7 @@ function renderAccionesAdmin(t) {
                                        : (rankingHTML(t) + descartesHTML(t) + faltanHTML(t)); break;
     case 'precio_al_vendedor':acciones = detalleActual.vistaConfirmarToma ? confirmarTomaHTML(t)
                                        : detalleActual.vistaMejorOferta ? mejorOfertaHTML(t)
+                                       : detalleActual.vistaCerrarOp ? cerrarOperacionHTML(t)
                                        : precioEnviadoHTML(t, true); break;
     case 'cerrada':           acciones = cerradaHTML(t); break;
     default:                  acciones = '';
@@ -3699,15 +3793,150 @@ function precioEnviadoHTML(t, esAdmin) {
     + descartesHTML(t)
     + faltanHTML(t)
     + `<div class="detalle-section">
-        <p style="font-size:13px; color:var(--grey-4);">${aceptado ? 'El cliente aceptó. <strong>Confirmá con la reventa</strong> para cerrar y avisarle.' : 'Cuando el vendedor marque que el cliente aceptó, confirmá con la reventa. (Igual podés confirmar vos.)'}</p>
+        <p style="font-size:13px; color:var(--grey-4);">${aceptado ? 'El cliente aceptó. Cerrá la operación para sacarla de pendientes.' : 'Cuando sepas en qué terminó (se tomó el usado o no se concretó), cerrala acá.'}</p>
         <div class="detalle-actions" style="margin-top:12px;">
-          <button class="det-btn green" onclick="abrirConfirmarToma()">✅ Confirmar con reventa</button>
-          <button class="det-btn red" onclick="cerrarNoTomada()">❌ No se concretó</button>
+          <button class="det-btn green" onclick="abrirCerrarOp()">✅ Cerrar operación</button>
         </div>
         <div class="detalle-actions" style="margin-top:10px;">
           <button class="det-btn outline" onclick="volverAEtapaPrecios()">↩️ Volver a la etapa de precios (re-elegir / cambiar %)</button>
         </div>
       </div>`;
+}
+
+// ── Cerrar operación (un solo paso, avisar a la reventa es OPCIONAL) ──
+// Agustín cierra la mayoría de las operaciones por afuera (teléfono / peritaje presencial),
+// así que el aviso por WhatsApp viene DESTILDADO y no hay restricción de precio mínimo.
+function abrirCerrarOp() {
+  const t = detalleActual.t;
+  const precios = (detalleActual.reventasPrecios || []).slice().sort((a, b) => Number(b.precio) - Number(a.precio));
+  const ref = precios.find(p => p.reventa_id === t.reventa_ganadora_id);
+  const row = ref || precios[0] || null;
+  detalleActual.cierreRes    = 'tomada';
+  detalleActual.cierreSel    = row ? row.id : '';
+  detalleActual.cierrePrecio = row ? Number(row.precio) : 0;
+  detalleActual.cierreAvisar = false;
+  detalleActual.vistaCerrarOp = true;
+  rerenderDetalle();
+}
+function cancelarCerrarOp() { detalleActual.vistaCerrarOp = false; rerenderDetalle(); }
+function _setCierreRes(r) { detalleActual.cierreRes = r; rerenderDetalle(); }
+function _setCierreSel(id) {
+  detalleActual.cierreSel = id;
+  const row = (detalleActual.reventasPrecios || []).find(p => p.id === id);
+  detalleActual.cierrePrecio = row ? Number(row.precio) : 0;
+  rerenderDetalle();
+}
+function _setCierrePrecio(v) {
+  detalleActual.cierrePrecio = Number(String(v).replace(/[^\d]/g, '')) || 0;
+  const el = document.getElementById('cierreMargen');
+  if (el) {
+    const margen = detalleActual.cierrePrecio - Number(detalleActual.t.precio_final_admin);
+    el.textContent = formatARS(margen);
+    el.style.color = margen < 0 ? 'var(--red)' : 'var(--green)';
+  }
+}
+function _setCierreAvisar(v) { detalleActual.cierreAvisar = !!v; }
+
+function cerrarOperacionHTML(t) {
+  const res = detalleActual.cierreRes;
+  const precios = (detalleActual.reventasPrecios || []).slice().sort((a, b) => Number(b.precio) - Number(a.precio));
+  const toma = Number(t.precio_final_admin);
+  const margen = Number(detalleActual.cierrePrecio || 0) - toma;
+
+  const bloqueTomada = `
+    <div class="detalle-field-label" style="margin-top:16px;">¿A qué reventa se lo diste?</div>
+    ${precios.length ? precios.map(p => {
+      const nombre = p.reventa?.nombre || p.reventa?.usuario || 'Reventa';
+      const esRef = p.reventa_id === t.reventa_ganadora_id;
+      return `<label class="ranking-row ${p.id === detalleActual.cierreSel ? 'ganador' : ''}" onclick="_setCierreSel('${p.id}')">
+        <input type="radio" name="cierreRev" ${p.id === detalleActual.cierreSel ? 'checked' : ''}>
+        <span class="ranking-info">
+          <span class="nom">${nombre} ${esRef ? _badgeRef() : ''}</span>
+          <span class="com">Había cotizado ${formatARS(p.precio)}</span>
+        </span>
+      </label>`;
+    }).join('') : '<div class="detalle-field-value muted">No hay reventas con precio cargado en esta tasación.</div>'}
+    <label class="ranking-row ${detalleActual.cierreSel === '' ? 'ganador' : ''}" onclick="_setCierreSel('')">
+      <input type="radio" name="cierreRev" ${detalleActual.cierreSel === '' ? 'checked' : ''}>
+      <span class="ranking-info">
+        <span class="nom">Ninguna / se resolvió por afuera</span>
+        <span class="com">No se registra margen ni se le avisa a nadie</span>
+      </span>
+    </label>
+
+    ${detalleActual.cierreSel !== '' ? `
+      <div class="detalle-field-label" style="margin-top:16px;">¿Cuánto te paga? (podés cambiarlo si arreglaron otro número)</div>
+      <input type="text" class="step-input" style="margin-bottom:8px;" value="${formatARS(detalleActual.cierrePrecio)}"
+             oninput="_setCierrePrecio(this.value)" onblur="rerenderDetalle()" inputmode="numeric">
+      <div class="resumen-precio">
+        <div class="rp-row"><span>Toma al cliente</span><span>${formatARS(toma)}</span></div>
+        <div class="rp-row"><span>Tu margen</span><span class="rp-big" id="cierreMargen" style="color:${margen < 0 ? 'var(--red)' : 'var(--green)'};">${formatARS(margen)}</span></div>
+      </div>
+      ${margen < 0 ? '<p style="font-size:12.5px; color:var(--red); margin-top:8px;">⚠️ Te paga menos de lo que le tomás al cliente: el margen queda negativo. Igual podés cerrarla.</p>' : ''}
+
+      <label class="cierre-check" style="margin-top:14px;">
+        <input type="checkbox" ${detalleActual.cierreAvisar ? 'checked' : ''} onchange="_setCierreAvisar(this.checked)">
+        <span>Avisarle por WhatsApp a la reventa (y al supervisor, si tiene)<br>
+          <span style="font-size:12px; color:var(--grey-4);">Destildado = se cierra en silencio, no le llega nada a nadie.</span>
+        </span>
+      </label>` : ''}`;
+
+  return `<div class="detalle-section">
+    <div class="detalle-section-title">✅ Cerrar operación</div>
+    <div class="detalle-field-label">¿En qué terminó?</div>
+    <div class="cierre-opts">
+      <button class="cierre-opt ${res === 'tomada' ? 'sel' : ''}" onclick="_setCierreRes('tomada')">✅ Se tomó el usado</button>
+      <button class="cierre-opt ${res === 'no_tomada' ? 'sel red' : ''}" onclick="_setCierreRes('no_tomada')">❌ No se concretó</button>
+    </div>
+    ${res === 'tomada' ? bloqueTomada
+      : '<p style="font-size:13px; color:var(--grey-4); margin-top:14px;">La operación se cierra como <strong>no tomada</strong> (el cliente no avanzó). No se le avisa a nadie.</p>'}
+    <div class="detalle-actions" style="margin-top:16px;">
+      <button class="det-btn ghost" onclick="cancelarCerrarOp()">Cancelar</button>
+      <button class="det-btn ${res === 'tomada' ? 'green' : 'red'}" onclick="confirmarCierreOp()">${res === 'tomada' ? '✅ Cerrar como tomada' : '❌ Cerrar como no concretada'}</button>
+    </div>
+  </div>`;
+}
+
+async function confirmarCierreOp() {
+  const t = detalleActual.t;
+  const res = detalleActual.cierreRes;
+
+  if (res === 'no_tomada') {
+    if (!await uiConfirm('Se cierra la operación como NO concretada (el cliente no avanzó).\n\nNo se le avisa a nadie.\n\n¿Cerrar?', { ok: 'Cerrar', danger: true })) return;
+    showLoading('Cerrando...');
+    try {
+      await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'cerrada', resultado: 'no_tomada' });
+      showToast('Operación cerrada (no se concretó)', 'success');
+      cerrarDetalle();
+      await loadAdminTasaciones();
+    } catch (e) { console.error(e); showToast('Error al cerrar', 'error'); }
+    finally { hideLoading(); }
+    return;
+  }
+
+  const row = (detalleActual.reventasPrecios || []).find(p => p.id === detalleActual.cierreSel);
+  const precio = Number(detalleActual.cierrePrecio) || 0;
+  if (row && precio <= 0) { showToast('Poné a cuánto te lo paga la reventa', 'error'); return; }
+
+  const nom = row ? (row.reventa?.nombre || row.reventa?.usuario || 'Reventa') : 'Ninguna (se resolvió por afuera)';
+  const margen = precio - Number(t.precio_final_admin);
+  const avisar = !!detalleActual.cierreAvisar && !!row;
+  const detalle = row
+    ? `Reventa: ${nom}\nTe paga: ${formatARS(precio)}\nToma al cliente: ${formatARS(t.precio_final_admin)}\nMargen: ${formatARS(margen)}\n\n${avisar ? '📲 Se le avisa por WhatsApp a la reventa.' : '🔕 NO se le avisa a nadie (cierre silencioso).'}`
+    : `Sin reventa asignada — no se registra margen y no se avisa a nadie.`;
+  if (!await uiConfirm(`Cerrás la operación como TOMADA.\n\n${detalle}\n\n¿Confirmar?`, { ok: 'Cerrar como tomada' })) return;
+
+  showLoading('Cerrando...');
+  try {
+    const patch = { estado: 'cerrada', resultado: 'tomada' };
+    if (row) { patch.reventa_final_id = row.reventa_id; patch.reventa_final_precio = precio; }
+    await sbPatch('tasaciones', `?id=eq.${t.id}`, patch);
+    showToast(avisar ? 'Usado tomado ✓ — reventa notificada' : 'Usado tomado ✓ (sin avisar)', 'success');
+    if (avisar) { notifyUsadoTomado(t, row.reventa_id, precio); notifySupervisorTomaCerrada(t); }
+    cerrarDetalle();
+    await loadAdminTasaciones();
+  } catch (e) { console.error(e); showToast('Error al cerrar la operación', 'error'); }
+  finally { hideLoading(); }
 }
 
 function cerradaHTML(t) {
@@ -4414,10 +4643,12 @@ function renderAccionesReventa(t) {
       <p style="font-size:13px; color:var(--grey-4); margin-top:12px;">¡Operación confirmada! Este auto se toma como parte de pago <strong>a tu precio</strong>. Coordiná la recepción del usado con el admin.</p>
     </div>`;
   }
-  // Cerrada sin que se haya tomado (cliente no avanzó)
+  // Cerrada (o el cliente no avanzó, o el usado se lo llevó otra reventa)
   if (t.estado === 'cerrada') {
     return `<div class="detalle-section" style="border:none;">
-      <div class="detalle-field-value muted">Esta operación se cerró: el cliente no avanzó con la toma del usado.</div>
+      <div class="detalle-field-value muted">${t.resultado === 'tomada'
+        ? 'Esta operación se cerró: la unidad ya no está disponible.'
+        : 'Esta operación se cerró: el cliente no avanzó con la toma del usado.'}</div>
     </div>`;
   }
   // Ya marcó "no interesado": mostrar ese estado + opción de cambiar de idea y cotizar
