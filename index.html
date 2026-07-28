@@ -417,6 +417,28 @@ input, select, textarea { font-family: var(--font); }
 .tas-card.urgente { border-left: 4px solid var(--accent); }
 .tas-card-hint { font-size: 12px; font-weight: 600; color: var(--accent); margin-top: 4px; }
 
+/* Buscador de la lista del admin */
+.admin-buscar-wrap { position: relative; margin-bottom: 12px; }
+.admin-buscar-ico { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 15px; opacity: 0.6; }
+.admin-buscar-input {
+  width: 100%; padding: 12px 40px 12px 40px;
+  border: 2px solid var(--grey-2); border-radius: 10px;
+  font-size: 15px; outline: none; background: white;
+  transition: border-color 0.2s;
+}
+.admin-buscar-input:focus { border-color: var(--primary); }
+.admin-buscar-clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  border: none; background: var(--grey-2); color: var(--grey-4);
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.admin-buscar-clear:hover { background: var(--grey-3); }
+.busq-aviso {
+  background: var(--grey-1); border: 1px solid var(--grey-2); border-radius: 10px;
+  padding: 9px 13px; margin-bottom: 10px; font-size: 12.5px; color: var(--grey-4);
+}
+
 /* ─── DETALLE TASACIÓN (modal grande) ─── */
 .detalle-overlay {
   position: fixed; inset: 0;
@@ -755,6 +777,13 @@ input, select, textarea { font-family: var(--font); }
   <!-- VISTA ADMIN -->
   <div class="view" id="adminView">
     <div id="adminResumenAccion" class="admin-accion-resumen" style="display:none;"></div>
+    <div class="admin-buscar-wrap">
+      <span class="admin-buscar-ico">🔎</span>
+      <input type="text" id="adminBuscar" class="admin-buscar-input" autocomplete="off"
+             placeholder="Buscar por marca, modelo, cliente o vendedor…"
+             oninput="onAdminBuscar(this.value)">
+      <button type="button" id="adminBuscarClear" class="admin-buscar-clear" onclick="limpiarAdminBusqueda()" style="display:none;">✕</button>
+    </div>
     <div class="filtros-bar" id="adminFiltros"></div>
     <div id="adminFiltroSub" class="filtro-sub"></div>
     <div id="adminTasacionesList" class="tas-list"></div>
@@ -2633,6 +2662,44 @@ const ADMIN_FILTROS = [
   { key: 'todas',              label: 'Todas',         sub: 'Todas las tasaciones, sin filtrar por estado.' }
 ];
 
+// ── Buscador de la lista del admin ──
+// Busca en TODAS las solapas (marca, modelo, versión, año, cliente, vendedor).
+// Sin tildes, case-insensitive y por palabras sueltas: "eco sport" encuentra "ECOSPORT".
+let adminBusqueda = '';
+
+function _norm(s) {
+  return (s == null ? '' : String(s)).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+function _busqTokens() {
+  return _norm(adminBusqueda).split(/\s+/).filter(Boolean);
+}
+function _tasHaystack(t) {
+  const v = t.vendedor || {};
+  const c = t.cargada_por || {};
+  return _norm([
+    t.usado_marca, t.usado_modelo, t.usado_version, t.usado_anio, t.usado_color,
+    t.cliente_nombre, v.nombre, v.usuario, c.nombre, c.usuario,
+    t.byd_modelo, t.byd_version, t.usado_provincia
+  ].join(' '));
+}
+function _matchBusqueda(t, tokens) {
+  const h = _tasHaystack(t);
+  const hSinEsp = h.replace(/\s+/g, '');
+  return tokens.every(tk => h.includes(tk) || hSinEsp.includes(tk));
+}
+function onAdminBuscar(v) {
+  adminBusqueda = v || '';
+  const btn = document.getElementById('adminBuscarClear');
+  if (btn) btn.style.display = adminBusqueda ? 'flex' : 'none';
+  renderAdminTasaciones();
+}
+function limpiarAdminBusqueda() {
+  const inp = document.getElementById('adminBuscar');
+  if (inp) inp.value = '';
+  onAdminBuscar('');
+  if (inp) inp.focus();
+}
+
 // Cuántas requieren ACCIÓN del admin en cada estado
 function _accionCount(key) {
   // Pendientes "de verdad" = sin precio referencial (las que tienen viven en la solapa Precio manual)
@@ -2728,21 +2795,30 @@ function _adminCardHint(t) {
 
 function renderAdminTasaciones() {
   const list = document.getElementById('adminTasacionesList');
-  const filtradas =
-      adminFiltroEstado === 'todas'          ? adminTasacionesData
-    : adminFiltroEstado === 'precio_manual'  ? adminTasacionesData.filter(_esPrecioManual)
-    : adminFiltroEstado === 'pendiente_admin'? adminTasacionesData.filter(t => t.estado === 'pendiente_admin' && t.precio_referencial == null)
-    : adminTasacionesData.filter(t => t.estado === adminFiltroEstado);
+  const tokens = _busqTokens();
+
+  // Si está buscando, la búsqueda manda: ignora la solapa y busca en TODAS.
+  const filtradas = tokens.length
+    ? adminTasacionesData.filter(t => _matchBusqueda(t, tokens))
+    : (adminFiltroEstado === 'todas'          ? adminTasacionesData
+    :  adminFiltroEstado === 'precio_manual'  ? adminTasacionesData.filter(_esPrecioManual)
+    :  adminFiltroEstado === 'pendiente_admin'? adminTasacionesData.filter(t => t.estado === 'pendiente_admin' && t.precio_referencial == null)
+    :  adminTasacionesData.filter(t => t.estado === adminFiltroEstado));
+
+  const avisoBusq = tokens.length
+    ? `<div class="busq-aviso">🔎 <strong>${filtradas.length}</strong> ${filtradas.length === 1 ? 'resultado' : 'resultados'} para “${adminBusqueda.trim()}” — buscando en <strong>todas las solapas</strong>. <a href="javascript:void(0)" onclick="limpiarAdminBusqueda()" style="color:var(--primary); font-weight:600;">Limpiar búsqueda</a></div>`
+    : '';
 
   if (filtradas.length === 0) {
-    list.innerHTML = `<div class="tas-list-empty">
-      <span class="emoji">📋</span>
-      ${adminTasacionesData.length === 0 ? 'No hay tasaciones cargadas todavía.' : 'No hay tasaciones con este filtro.'}
+    list.innerHTML = avisoBusq + `<div class="tas-list-empty">
+      <span class="emoji">${tokens.length ? '🔎' : '📋'}</span>
+      ${tokens.length ? `No hay tasaciones que coincidan con “${adminBusqueda.trim()}”.`
+        : (adminTasacionesData.length === 0 ? 'No hay tasaciones cargadas todavía.' : 'No hay tasaciones con este filtro.')}
     </div>`;
     return;
   }
 
-  list.innerHTML = filtradas.map(t => {
+  list.innerHTML = avisoBusq + filtradas.map(t => {
     const hint = _adminCardHint(t);
     return `<div class="tas-card ${hint ? 'urgente' : ''}" onclick="verDetalleAdmin('${t.id}')">
       <div class="tas-card-row">
