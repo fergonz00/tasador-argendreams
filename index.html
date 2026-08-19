@@ -939,7 +939,11 @@ const SUPABASE_ANON = 'sb_publishable_NPO73kz-5gDAYeiZnmZmcA_gNe6Y31M';
 // Formato nuevo de keys de Supabase (sb_publishable_ en lugar de eyJ...).
 // Es la equivalente de la "anon public key", apta para frontend.
 
-const SUPERADMINS_USUARIOS = ['fngonzalez'];
+// Acceso total (modo god): Config de usuarios + impersonation. Se define SOLO
+// acá, en el código — a propósito. Desde la plataforma nadie puede darle poder
+// total a nadie: el selector de Rol no ofrece "superadmin" y esta lista no se
+// toca por UI. Son los 4 dueños/directores.
+const SUPERADMINS_USUARIOS = ['fngonzalez', 'fgonzalez', 'diegok', 'juanc'];
 
 // ─── STATE ───────────────────────────────────────────────────────
 let currentUser = null;
@@ -5290,7 +5294,7 @@ async function loadUsuarios() {
   const list = document.getElementById('usuariosList');
   list.innerHTML = '<div class="tas-list-empty"><span class="emoji">⏳</span>Cargando usuarios...</div>';
   try {
-    usuariosData = await sbGet('usuarios', '?select=id,usuario,nombre,rol,activo,debe_cambiar_clave,telefono_wa,supervisor_id&order=usuario.asc');
+    usuariosData = await sbGet('usuarios', '?select=id,usuario,nombre,rol,activo,debe_cambiar_clave,telefono_wa,supervisor_id,notif_admin_bulk&order=usuario.asc');
     renderUsuariosFiltros();
     renderUsuarios();
   } catch (e) {
@@ -5341,6 +5345,7 @@ function renderUsuarios() {
           <div class="usr-flags">
             ${!u.activo ? '<span class="usr-flag-inactivo">● Inactivo</span> ' : ''}
             ${u.debe_cambiar_clave ? '<span class="usr-flag-cambiar">⚠ Debe cambiar clave</span>' : ''}
+            ${(u.rol === 'admin' && u.notif_admin_bulk === false) ? '<span class="usr-flag-cambiar">🔕 Sin avisos masivos</span>' : ''}
           </div>
         </div>
         ${_rolBadge(u.rol)}
@@ -5377,6 +5382,8 @@ function _onRolUsuarioChange() {
   const rol = document.getElementById('usrRol').value;
   const wrap = document.getElementById('usrSupWrap');
   if (wrap) wrap.style.display = rol === 'vendedor' ? 'block' : 'none';
+  const bulk = document.getElementById('usrBulkWrap');
+  if (bulk) bulk.style.display = rol === 'admin' ? 'block' : 'none';
 }
 function _errUsuario(msg) {
   const e = document.getElementById('usrError');
@@ -5419,6 +5426,10 @@ function usuarioModalHTML(modo, u) {
       </select>
       ${supervisores.length === 0 ? '<p style="font-size:12px; color:var(--grey-4); margin-top:-4px;">No hay supervisores creados todavía. Creá primero el usuario con rol Supervisor.</p>' : ''}
     </div>
+    <div id="usrBulkWrap" style="display:${rolActual === 'admin' ? 'block' : 'none'};">
+      <label class="usr-check"><input type="checkbox" id="usrBulk" ${(esEdit && u.notif_admin_bulk === false) ? '' : 'checked'}> Avisarle por WhatsApp cada tasación nueva y el resumen +1h</label>
+      <p style="font-size:12px; color:var(--grey-4); margin-top:-4px;">Destildalo para los directores: entran y ven todo igual, pero no les llega un WhatsApp por cada cosa que pasa. Los avisos personales (los de sus propias tasaciones) siguen llegando.</p>
+    </div>
     <label class="usr-lbl">Teléfono WhatsApp (opcional, formato 549...)</label>
     <input type="text" id="usrTelWA" placeholder="5493815551234" value="${esEdit ? escAttr(u.telefono_wa || '') : ''}">
     ${esEdit ? `<label class="usr-check"><input type="checkbox" id="usrActivo" ${u.activo ? 'checked' : ''}> Usuario activo</label>` : ''}
@@ -5451,6 +5462,8 @@ async function guardarUsuarioModal(modo, id) {
   const telWa  = (document.getElementById('usrTelWA').value || '').trim();
   // supervisor_id solo aplica a vendedores; cualquier otro rol lo limpia
   const supervisorId = rol === 'vendedor' ? ((document.getElementById('usrSupervisor') || {}).value || null) : null;
+  // notif_admin_bulk solo tiene sentido en admins; el resto de los roles queda en true (default)
+  const notifBulk = rol === 'admin' ? !!((document.getElementById('usrBulk') || {}).checked) : true;
   if (!nombre) return _errUsuario('El nombre es obligatorio');
 
   if (modo === 'nuevo') {
@@ -5463,7 +5476,7 @@ async function guardarUsuarioModal(modo, id) {
     if (usuariosData.some(x => x.usuario === usuario)) return _errUsuario('Ya existe un usuario con ese nombre');
     showLoading('Creando usuario...');
     try {
-      await sbPost('usuarios', { usuario, nombre, clave, rol, supervisor_id: supervisorId, telefono_wa: telWa || null, activo: true, debe_cambiar_clave: true });
+      await sbPost('usuarios', { usuario, nombre, clave, rol, supervisor_id: supervisorId, telefono_wa: telWa || null, activo: true, debe_cambiar_clave: true, notif_admin_bulk: notifBulk });
       cerrarUsuarioModal();
       showToast('Usuario creado', 'success');
       await loadUsuarios();
@@ -5473,7 +5486,7 @@ async function guardarUsuarioModal(modo, id) {
     const activo = document.getElementById('usrActivo').checked;
     showLoading('Guardando...');
     try {
-      await sbPatch('usuarios', `?id=eq.${id}`, { nombre, rol, supervisor_id: supervisorId, telefono_wa: telWa || null, activo });
+      await sbPatch('usuarios', `?id=eq.${id}`, { nombre, rol, supervisor_id: supervisorId, telefono_wa: telWa || null, activo, notif_admin_bulk: notifBulk });
       cerrarUsuarioModal();
       showToast('Usuario actualizado', 'success');
       await loadUsuarios();
