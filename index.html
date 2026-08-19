@@ -1210,6 +1210,20 @@ async function notifySupervisorTomaCerrada(t) {
     evento: 'sup_usado_tomado', tasacion_id: t.id, destinatario_id: r.sup.id
   });
 }
+async function notifySupervisorTasacionRebotada(t, camposTexto) {
+  const r = await _waSupervisorDe(t.vendedor_id);
+  if (!r) return;
+  // El vendedor es quien corrige; al supervisor le llega para enterarse de que
+  // una tasación de su local volvió. Se antepone el vendedor al vehículo para
+  // que el jefe sepa de quién es (mismo criterio que sup_precio_de_toma).
+  notifyWA({
+    template: 'tasacion_rebotada', to: r.sup.telefono_wa,
+    params: [r.sup.nombre || r.sup.usuario,
+             `${r.vendedor.nombre || r.vendedor.usuario} — ${_waVehiculo(t)}`,
+             camposTexto || 'algunos campos'],
+    evento: 'sup_tasacion_rebotada', tasacion_id: t.id, destinatario_id: r.sup.id
+  });
+}
 
 // ─── LOADING / UTILS ─────────────────────────────────────────────
 function showLoading(text = '') {
@@ -3504,7 +3518,9 @@ async function confirmarRebote() {
     });
     await sbPatch('tasaciones', `?id=eq.${t.id}`, { estado: 'rebotada' });
     showToast('Tasación rebotada al vendedor', 'success');
-    notifyTasacionRebotada(t, campos.length ? campos.join(', ') : (nota || 'algunos campos'));
+    const _motivoRebote = campos.length ? campos.join(', ') : (nota || 'algunos campos');
+    notifyTasacionRebotada(t, _motivoRebote);
+    notifySupervisorTasacionRebotada(t, _motivoRebote);
     cerrarDetalle();
     await loadAdminTasaciones();
   } catch (e) {

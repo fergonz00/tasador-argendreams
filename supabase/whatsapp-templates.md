@@ -189,6 +189,7 @@ Template ID Meta: `1334222915500033`.
 | Vendedor (de un supervisor) carga tasación | `nueva_tasacion` (evento `sup_nueva_tasacion`) | supervisor del vendedor | inmediato (salvo que la cargue el supervisor) |
 | Admin envía precio al vendedor (incl. cierre directo) | `precio_de_toma` (evento `sup_precio_de_toma`) | supervisor del vendedor | inmediato |
 | Admin confirma la toma | `usado_tomado` (evento `sup_usado_tomado`) | supervisor del vendedor | inmediato |
+| Admin rebota una tasación | `tasacion_rebotada` (evento `sup_tasacion_rebotada`) | supervisor del vendedor | inmediato ({{2}} = "vendedor — vehículo") |
 
 ---
 
