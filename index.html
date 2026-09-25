@@ -1832,17 +1832,20 @@ function calcAjusteKm(km, anio, modelo) {
   const kmPorAnio = esPickup(modelo) ? 20000 : 15000;
   const kmEsperados = antiguedad * kmPorAnio;
   const ratio = (Number(km) || 0) / kmEsperados;
-  if (ratio <= 0.15) return 12;
-  if (ratio <= 0.33) return 8;
-  if (ratio <= 0.50) return 5;
-  if (ratio <= 0.66) return 3;
-  if (ratio <= 0.90) return 1;
+  // Recalibrado 25-09-2026 contra el mercado (ver el mismo bloque en tasador-tga).
+  if (ratio <= 0.15) return 26;
+  if (ratio <= 0.33) return 22;
+  if (ratio <= 0.50) return 18;
+  if (ratio <= 0.66) return 14;
+  if (ratio <= 0.80) return 11;
+  if (ratio <= 0.90) return 8;
+  if (ratio <= 1.00) return 4;
   if (ratio <= 1.10) return 0;
-  if (ratio <= 1.33) return -3;
-  if (ratio <= 1.66) return -5;
-  if (ratio <= 2.00) return -8;
-  if (ratio <= 3.00) return -12;
-  return -18;
+  if (ratio <= 1.33) return -2;
+  if (ratio <= 1.66) return -3;
+  if (ratio <= 2.00) return -6;
+  if (ratio <= 3.00) return -9;
+  return -14;
 }
 
 // Fórmula FMG sobre el 0km equivalente guardado: precio0km / 1,05 / 1,09^años → precio mercado (ARS)
