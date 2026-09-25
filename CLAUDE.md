@@ -374,6 +374,8 @@ O vía Dashboard: Project Settings → Edge Functions → Secrets → Add new se
 
 **Sobre `WA_BCC_PHONE`**: si está definido, cada notificación exitosa también se manda a ese número (excepto si el destinatario natural ES ese mismo número, para no duplicar). El log de la copia se guarda en `notificaciones_log` con `evento` sufijado en `_bcc` y `payload->bcc = true`. Útil para auditar al principio. Para desactivarlo: borrar el secret.
 
+🔕 **BORRADO el 25/09/2026 — no volver a ponerlo sin que Fer lo pida.** Apuntaba a su número y le mandaba copia de **todo**: 1.222 `nueva_unidad_reventa_bcc` en 30 días más el resto, ~1.570 mensajes/mes que Meta factura como cualquier template y que no leía nadie. Servía para auditar los primeros meses; el circuito ya está probado y el log de `notificaciones_log` alcanza para eso. El código del BCC sigue en `notify-whatsapp` y queda inerte sin el secret. Fer ahora quiere **sólo** los dos avisos del tasador de TGA (entra un VW / resultado de la ronda), ver el `CLAUDE.md` de `tasador-tga`. En la misma decisión se le puso `notif_admin_bulk=false` a `fngonzalez`.
+
 ⚠️ **JWT verification debe estar OFF** para esta función (Dashboard → Functions → notify-whatsapp → Settings → Verify JWT: OFF). Sin esto las llamadas internas (pg_cron / cliente con `sb_publishable_*`) reciben 401.
 
 ⚠️ **Registrar el número en Cloud API** (one-shot, después de aprobado por Meta): la primera vez tira `(#133010) Account not registered`. Solución: llamar a la Edge Function con `{action: 'register', pin: '123456'}` — necesita `timeout_milliseconds := 60000` desde pg_net porque Meta tarda ~10s. Una vez registrado queda activo permanente. PIN actual: `123456`.
