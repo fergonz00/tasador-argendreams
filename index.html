@@ -1827,7 +1827,20 @@ function calcPrecioCCA(marca, modelo, version, anio) {
 }
 
 // Factor de toma de la Fórmula FG, calibrado contra Kavak (ver tasador-tga).
-const FG_TOMA = 0.83;
+// ⚠️ Factor de toma de la Formula FG. **0,87 = 15% de margen** (1 / 1,15).
+// Fer, 5-10-2026: "en FG quiero margen del 15%, no 30%. Nunca vendo un usado
+// con margen del 30%, maximo 15 o un toque mas".
+//
+// Antes era 0,83, que son 20,5% de margen. Se habia calibrado para que la FG
+// de toma cayera cerca de lo que paga Kavak, y por eso quedaba sistematicamente
+// por debajo: la FG daba -15/-17% contra la permuta de Kavak en los SUV.
+//
+// Lo que cerro la discusion fue medir a cuanto VENDE Kavak los mismos autos
+// (kavak-cotizador/kavak_venta.py, 90 publicaciones): **su spread entre lo que
+// paga y lo que publica es +15,3% de mediana**. O sea que el precio de compra
+// de Kavak YA es un precio de toma con 15% adentro, el mismo criterio que usa
+// Fer. Con 0,87 las dos referencias quedan alineadas.
+const FG_TOMA = 0.87;
 
 // Ajuste por kilómetros (mismo escalonado que TGA, año base 2026)
 function calcAjusteKm(km, anio, modelo) {
