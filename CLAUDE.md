@@ -47,7 +47,7 @@ EN_REVENTA → Cada reventa carga su precio (independiente)
         │
         │ (al menos 1 precio cargado)
         ▼
-PRECIOS_RECIBIDOS → Admin ve ranking con descuento configurable (7/9/12%)
+PRECIOS_RECIBIDOS → Admin ve ranking con descuento configurable (5/7/9/12%)
         │           │
         │           ├─→ Admin "reenviar a reventas para mejorar"
         │           │   → guarda ronda actual en histórico, vuelve a EN_REVENTA
@@ -154,7 +154,7 @@ Mejora del estado `precio_al_vendedor` (solapa "Con precio") para el admin:
 
 Dos pedidos de Fer (commit en `master`, deployado):
 
-- **% de plataforma editable hacia arriba**: en el ranking (`rankingHTML`), además de los presets 7/9/12% ahora hay un **input numérico** para escribir cualquier % (clamp 0–60, sirve para subirlo por encima de 12). Preview en vivo del precio de toma sin re-render (helpers `_clampDesc`, `_resumenRankingInner`, `_previewDescRanking`; `cambiarDescuento` ahora clampa). `enviarPrecioVendedor` lee `detalleActual.descuentoSel`, que el preview mantiene actualizado.
+- **% de plataforma editable hacia arriba**: en el ranking (`rankingHTML`), además de los presets 5/7/9/12% (el 5% lo pidió Agustín el 16-10-26: hay autos donde conviene ganar menos y no perder la venta del 0km) ahora hay un **input numérico** para escribir cualquier % (clamp 0–60, sirve para subirlo por encima de 12). Preview en vivo del precio de toma sin re-render (helpers `_clampDesc`, `_resumenRankingInner`, `_previewDescRanking`; `cambiarDescuento` ahora clampa). `enviarPrecioVendedor` lee `detalleActual.descuentoSel`, que el preview mantiene actualizado.
 - **Cierre directo con una reventa** (`cierreDirectoHTML` + `confirmarCierreDirecto`): para cuando una reventa ya pasó el precio por teléfono y la operación se cerró. Botón **⚡ Cierre directo** disponible en `pendiente_admin` (saltea el broadcast a las 7-8 reventas) **y** en `en_reventa`/`precios_recibidos` (una cerró por teléfono mientras estaba en reventas). El admin elige **1 reventa** + **precio que paga (ARS)** + **% de plataforma** (mismo selector editable) → calcula el precio de toma al cliente. Al confirmar: upsert en `reventas_precios` (ronda actual), comentario opcional a `comentarios_reventa`, y `PATCH tasaciones` a `precio_al_vendedor` con `reventa_ganadora_id` = esa reventa + `precio_final_admin` + `precio_al_vendedor_at`. Queda en la solapa **"Con precio"** lista para marcar **TOMADA en un clic** (reusa `abrirConfirmarToma` → `confirmarTomaFinal`, que setea `reventa_final_id` y avisa a la reventa). Así toda tasación queda en sistema aunque se resuelva rápido. Estado del form en `detalleActual`: `vistaCierreDirecto`, `cdDesc` (helpers `abrirCierreDirecto`/`cancelarCierreDirecto`/`_setCdDesc`/`_previewCierreDirecto`/`_resumenCierreInner`).
   - **Check "Pedir precio igual a todas las reventas"** (`cdPedirTodas`, prendido por defecto): aunque el precio al cliente ya quedó fijo, igual se les pide/avisa a todas (`notifyNuevaUnidadReventa` + setea `enviada_a_reventas_at` + re-arma el cron del resumen poniendo `resumen_reventas_enviado_at=null`). Las demás cotizan y sus precios entran como **POSTERIOR**; al **Confirmar con reventa** se le asigna la toma a la que **pague más** que la de referencia (más margen, mismo precio al cliente). Si se destilda, solo queda registrada esa reventa.
 

@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS tasaciones (
   resultado               TEXT CHECK (resultado IN ('tomada', 'no_tomada')),
 
   -- Configuración admin
-  descuento_pct_admin     NUMERIC NOT NULL DEFAULT 9,    -- 7 | 9 | 12
+  descuento_pct_admin     NUMERIC NOT NULL DEFAULT 9,    -- 5 | 7 | 9 | 12 (o cualquier % a mano)
   precio_final_admin      NUMERIC,                       -- el precio que Agustín envía al vendedor
   ronda_actual            INT NOT NULL DEFAULT 1,        -- incrementa al "reenviar para mejorar"
 

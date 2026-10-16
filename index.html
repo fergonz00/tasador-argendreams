@@ -3636,7 +3636,7 @@ function rankingHTML(t) {
 
     <div class="detalle-field-label" style="margin-top:16px;">Descuento que se aplica al ganador <span style="font-weight:400; color:var(--grey-4);">(podés escribir otro %)</span></div>
     <div class="desc-selector" id="rkDescSel">
-      ${[7, 9, 12].map(d => `<div class="desc-pill ${Number(d) === Number(desc) ? 'active' : ''}" data-d="${d}" onclick="cambiarDescuento(${d})">${d}%</div>`).join('')}
+      ${[5, 7, 9, 12].map(d => `<div class="desc-pill ${Number(d) === Number(desc) ? 'active' : ''}" data-d="${d}" onclick="cambiarDescuento(${d})">${d}%</div>`).join('')}
       <label class="desc-custom" title="% a medida — podés subirlo">
         <input type="number" class="desc-input" min="0" max="60" step="0.5" value="${desc}"
           oninput="_previewDescRanking(this.value)" onchange="cambiarDescuento(this.value)">%
@@ -4345,7 +4345,7 @@ function cierreDirectoHTML(t) {
     <input type="number" id="cdPrecio" class="step-input" placeholder="Ej: 18000000" oninput="_previewCierreDirecto()">
     <label class="step-label">% de plataforma <span style="font-weight:400; color:var(--grey-4);">(podés escribir otro)</span></label>
     <div class="desc-selector" id="cdDescSel">
-      ${[7, 9, 12].map(d => `<div class="desc-pill ${Number(d) === Number(desc) ? 'active' : ''}" data-d="${d}" onclick="_setCdDesc(${d})">${d}%</div>`).join('')}
+      ${[5, 7, 9, 12].map(d => `<div class="desc-pill ${Number(d) === Number(desc) ? 'active' : ''}" data-d="${d}" onclick="_setCdDesc(${d})">${d}%</div>`).join('')}
       <label class="desc-custom" title="% a medida — podés subirlo">
         <input type="number" id="cdDescInput" class="desc-input" min="0" max="60" step="0.5" value="${desc}" oninput="_setCdDesc(this.value)">%
       </label>
